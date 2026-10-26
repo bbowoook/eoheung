@@ -1,0 +1,9 @@
+node_modules/
+dist/
+target/
+release/
+*.tsbuildinfo
+windows/src-tauri/gen/schemas/
+.env
+.env.*
+.DS_Store

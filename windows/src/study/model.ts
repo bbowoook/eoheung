@@ -1,0 +1,529 @@
+// 어흥이's study board: what is in it, and the pure rules the cards, Settings and
+// the reminders follow. Rust only stores it (src-tauri/src/study.rs); nothing here
+// touches the network or the DOM, so all of it is tested in tests/study.test.mjs.
+
+export interface Exam {
+  id: string;
+  subject: string;
+  /** YYYY-MM-DD, local. */
+  date: string;
+  /** HH:MM, or "" when the time isn't known yet. */
+  start: string;
+  end: string;
+  place: string;
+  note: string;
+}
+
+/** One class on one day: the timetable changes week to week, so every class is dated. */
+export interface ClassItem {
+  id: string;
+  date: string;
+  /** "" for an all-day line (중간고사, 휴강…). */
+  start: string;
+  end: string;
+  subject: string;
+  who: string;
+  note: string;
+}
+
+export interface Task {
+  id: string;
+  title: string;
+  subject: string;
+  /** YYYY-MM-DD or "" (no due date). */
+  due: string;
+  done: boolean;
+  doneAt: number | null;
+  created: number;
+}
+
+export interface Notice {
+  id: string;
+  source: "telegram" | "manual";
+  /** The group or channel it came from. */
+  chat: string;
+  author: string;
+  text: string;
+  /** Unix ms. */
+  date: number;
+  read: boolean;
+}
+
+export interface TelegramChat {
+  title: string;
+  kind: string;
+  muted: boolean;
+}
+
+export interface TelegramState {
+  enabled: boolean;
+  /** The user's own chat with the bot, where reminders go (set by pairing). */
+  ownerChatId: number | null;
+  ownerName: string;
+  botName: string;
+  /** The code the user sends the bot to pair; "" until one is made. */
+  pairCode: string;
+  /** The next getUpdates offset. */
+  offset: number;
+  chats: Record<string, TelegramChat>;
+  /** HH:MM: the evening-before reminders. */
+  remindEvening: string;
+  /** HH:MM: the morning-of reminders. */
+  remindMorning: string;
+  remindExam: boolean;
+  remindTask: boolean;
+  /** Reminder keys already sent, newest last. */
+  sent: string[];
+}
+
+export interface Board {
+  version: 1;
+  semester: string;
+  exams: Exam[];
+  classes: ClassItem[];
+  tasks: Task[];
+  notices: Notice[];
+  telegram: TelegramState;
+}
+
+export const DEFAULT_TELEGRAM: TelegramState = {
+  enabled: false,
+  ownerChatId: null,
+  ownerName: "",
+  botName: "",
+  pairCode: "",
+  offset: 0,
+  chats: {},
+  remindEvening: "21:00",
+  remindMorning: "07:30",
+  remindExam: true,
+  remindTask: true,
+  sent: [],
+};
+
+/** Notices kept: older ones fall off. */
+export const MAX_NOTICES = 300;
+const MAX_SENT = 400;
+
+// ── Reading a stored board ───────────────────────────────────────────────────
+
+const str = (v: unknown, fallback = ""): string => (typeof v === "string" ? v : fallback);
+const arr = (v: unknown): Record<string, unknown>[] =>
+  Array.isArray(v) ? v.filter((x): x is Record<string, unknown> => x != null && typeof x === "object") : [];
+const DATE = /^\d{4}-\d{2}-\d{2}$/;
+const TIME = /^\d{2}:\d{2}$/;
+const date = (v: unknown) => (DATE.test(str(v)) ? str(v) : "");
+const time = (v: unknown) => (TIME.test(str(v)) ? str(v) : "");
+
+/** Whatever was stored, as a board with every field in place (never throws). */
+export function normalizeBoard(raw: unknown): Board {
+  const o = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const tg = (o.telegram && typeof o.telegram === "object" ? o.telegram : {}) as Record<string, unknown>;
+  const chats: Record<string, TelegramChat> = {};
+  if (tg.chats && typeof tg.chats === "object") {
+    for (const [k, v] of Object.entries(tg.chats as Record<string, Record<string, unknown>>)) {
+      chats[k] = { title: str(v?.title, k), kind: str(v?.kind), muted: v?.muted === true };
+    }
+  }
+  return {
+    version: 1,
+    semester: str(o.semester),
+    exams: arr(o.exams).map((e) => ({
+      id: str(e.id) || newId(), subject: str(e.subject), date: date(e.date), start: time(e.start), end: time(e.end),
+      place: str(e.place), note: str(e.note),
+    })).filter((e) => e.subject && e.date),
+    classes: arr(o.classes).map((c) => ({
+      id: str(c.id) || newId(), date: date(c.date), start: time(c.start), end: time(c.end),
+      subject: str(c.subject), who: str(c.who), note: str(c.note),
+    })).filter((c) => c.subject && c.date),
+    tasks: arr(o.tasks).map((t) => ({
+      id: str(t.id) || newId(), title: str(t.title), subject: str(t.subject), due: date(t.due),
+      done: t.done === true, doneAt: typeof t.doneAt === "number" ? t.doneAt : null,
+      created: typeof t.created === "number" ? t.created : 0,
+    })).filter((t) => t.title),
+    notices: arr(o.notices).map((n) => ({
+      id: str(n.id) || newId(), source: n.source === "manual" ? "manual" as const : "telegram" as const,
+      chat: str(n.chat), author: str(n.author), text: str(n.text),
+      date: typeof n.date === "number" ? n.date : 0, read: n.read === true,
+    })).filter((n) => n.text),
+    telegram: {
+      ...DEFAULT_TELEGRAM,
+      enabled: tg.enabled === true,
+      ownerChatId: typeof tg.ownerChatId === "number" ? tg.ownerChatId : null,
+      ownerName: str(tg.ownerName),
+      botName: str(tg.botName),
+      pairCode: str(tg.pairCode),
+      offset: typeof tg.offset === "number" ? tg.offset : 0,
+      chats,
+      remindEvening: time(tg.remindEvening) || DEFAULT_TELEGRAM.remindEvening,
+      remindMorning: time(tg.remindMorning) || DEFAULT_TELEGRAM.remindMorning,
+      remindExam: tg.remindExam !== false,
+      remindTask: tg.remindTask !== false,
+      sent: Array.isArray(tg.sent) ? tg.sent.filter((s): s is string => typeof s === "string").slice(-MAX_SENT) : [],
+    },
+  };
+}
+
+let idSeq = 0;
+export function newId(): string {
+  idSeq = (idSeq + 1) % 1296;
+  return `${Date.now().toString(36)}${idSeq.toString(36).padStart(2, "0")}${Math.floor(Math.random() * 1296).toString(36)}`;
+}
+
+// ── Dates (all local) ────────────────────────────────────────────────────────
+
+const pad = (n: number) => String(n).padStart(2, "0");
+
+export function ymd(d: Date): string {
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+export function hm(d: Date): string {
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+export function parseYmd(s: string): Date {
+  const [y, m, d] = s.split("-").map(Number);
+  return new Date(y, (m || 1) - 1, d || 1);
+}
+
+export function addDays(s: string, n: number): string {
+  const d = parseYmd(s);
+  d.setDate(d.getDate() + n);
+  return ymd(d);
+}
+
+/** Whole days from `from` to `to` (both YYYY-MM-DD): tomorrow is 1. */
+export function daysBetween(from: string, to: string): number {
+  return Math.round((parseYmd(to).getTime() - parseYmd(from).getTime()) / 86_400_000);
+}
+
+export const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
+
+/** "10/27 (화)". */
+export function shortDate(s: string): string {
+  const d = parseYmd(s);
+  return `${d.getMonth() + 1}/${d.getDate()} (${WEEKDAYS[d.getDay()]})`;
+}
+
+/** "10월 27일 화요일". */
+export function longDate(s: string): string {
+  const d = parseYmd(s);
+  return `${d.getMonth() + 1}월 ${d.getDate()}일 ${WEEKDAYS[d.getDay()]}요일`;
+}
+
+/** "D-3", "D-day", "D+2". */
+export function ddayLabel(n: number): string {
+  if (n === 0) return "D-day";
+  return n > 0 ? `D-${n}` : `D+${-n}`;
+}
+
+/** The Monday of the week `s` is in. */
+export function mondayOf(s: string): string {
+  const d = parseYmd(s);
+  const back = (d.getDay() + 6) % 7;
+  return addDays(s, -back);
+}
+
+/** "15:00" → minutes since midnight; "" → null. */
+export function minutes(t: string): number | null {
+  if (!TIME.test(t)) return null;
+  const [h, m] = t.split(":").map(Number);
+  return h * 60 + m;
+}
+
+// ── What the cards show ──────────────────────────────────────────────────────
+
+const byDateTime = <T extends { date: string; start: string }>(a: T, b: T) =>
+  a.date.localeCompare(b.date) || (a.start || "99").localeCompare(b.start || "99");
+
+/** Exams still to come — today's until it has ended — soonest first. */
+export function upcomingExams(board: Board, now: Date): Exam[] {
+  const today = ymd(now);
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+  return board.exams
+    .filter((e) => {
+      if (e.date > today) return true;
+      if (e.date < today) return false;
+      const end = minutes(e.end) ?? minutes(e.start);
+      return end == null || end > nowMin;
+    })
+    .sort(byDateTime);
+}
+
+export function classesOn(board: Board, day: string): ClassItem[] {
+  return board.classes.filter((c) => c.date === day).sort(byDateTime);
+}
+
+export type ClassPhase = "past" | "now" | "next" | "later";
+
+/** Where each of today's classes stands: over, going on, the next one, later. */
+export function classPhases(items: ClassItem[], now: Date): ClassPhase[] {
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+  let nextGiven = false;
+  return items.map((c) => {
+    const s = minutes(c.start);
+    const e = minutes(c.end);
+    if (s == null) return "later";
+    if (e != null && e <= nowMin) return "past";
+    if (s <= nowMin) return "now";
+    if (!nextGiven) {
+      nextGiven = true;
+      return "next";
+    }
+    return "later";
+  });
+}
+
+/** Open tasks, the ones due first on top; those without a date last. */
+export function openTasks(board: Board): Task[] {
+  return board.tasks
+    .filter((t) => !t.done)
+    .sort((a, b) => (a.due || "9999").localeCompare(b.due || "9999") || a.created - b.created);
+}
+
+/** Open tasks due within `days` days (overdue ones included). */
+export function tasksDueWithin(board: Board, today: string, days: number): Task[] {
+  return openTasks(board).filter((t) => t.due && daysBetween(today, t.due) <= days);
+}
+
+export function unreadNotices(board: Board): Notice[] {
+  return board.notices.filter((n) => !n.read);
+}
+
+export function sortedNotices(board: Board): Notice[] {
+  return [...board.notices].sort((a, b) => b.date - a.date);
+}
+
+/**
+ * The one line under the date on the 오늘 card: the next exam, or a word of
+ * encouragement when there is none.
+ */
+export function headline(board: Board, now: Date): string {
+  const next = upcomingExams(board, now)[0];
+  if (!next) return "다가오는 시험이 없어. 오늘도 차근차근 하자!";
+  const n = daysBetween(ymd(now), next.date);
+  if (n === 0) return `오늘 ${next.subject} 시험이야${next.start ? ` (${next.start})` : ""}! 화이팅!`;
+  if (n === 1) return `내일 ${next.subject} 시험! 오늘 마무리 잘 하자`;
+  return `${next.subject} 시험까지 ${n}일 남았어`;
+}
+
+// ── A task typed in one line ─────────────────────────────────────────────────
+
+/**
+ * "침구 레포트 11/3" → title "침구 레포트", due 2026-11-03 (the next 11/3 from
+ * today). Also understands "내일", "모레", "오늘" and "~11/3", "11월 3일".
+ */
+export function parseQuickTask(text: string, today: string): { title: string; due: string } {
+  let title = text.trim();
+  let due = "";
+  const rel: [RegExp, number][] = [[/(^|\s)오늘(\s|$)/, 0], [/(^|\s)내일(\s|$)/, 1], [/(^|\s)모레(\s|$)/, 2]];
+  for (const [re, n] of rel) {
+    if (re.test(title)) {
+      due = addDays(today, n);
+      title = title.replace(re, " ").trim();
+      break;
+    }
+  }
+  if (!due) {
+    const m = title.match(/(?:^|\s)~?(\d{1,2})\s*(?:\/|월\s*)(\d{1,2})일?(?=\s|$)/);
+    if (m) {
+      const month = Number(m[1]);
+      const day = Number(m[2]);
+      if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+        const year = Number(today.slice(0, 4));
+        let cand = `${year}-${pad(month)}-${pad(day)}`;
+        // A date more than two months back is next year's.
+        if (daysBetween(today, cand) < -60) cand = `${year + 1}-${pad(month)}-${pad(day)}`;
+        due = cand;
+        title = title.replace(m[0], " ").replace(/\s+/g, " ").trim();
+      }
+    }
+  }
+  return { title: title || text.trim(), due };
+}
+
+// ── Reminders ────────────────────────────────────────────────────────────────
+
+export interface Reminder {
+  key: string;
+  text: string;
+  /** The pill it belongs to, so the island can badge it. */
+  pill: "study_exams" | "study_tasks";
+}
+
+/**
+ * The reminders due at `now` that haven't been sent. Each one belongs to one day
+ * (its key carries the date), so a computer that was off simply misses it rather
+ * than sending yesterday's reminder late.
+ */
+export function remindersDue(board: Board, now: Date): Reminder[] {
+  const tg = board.telegram;
+  const today = ymd(now);
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+  const evening = minutes(tg.remindEvening) ?? 21 * 60;
+  const morning = minutes(tg.remindMorning) ?? 7 * 60 + 30;
+  const sent = new Set(tg.sent);
+  const out: Reminder[] = [];
+  const add = (key: string, text: string, pill: Reminder["pill"]) => {
+    if (!sent.has(key)) out.push({ key, text, pill });
+  };
+
+  if (tg.remindExam) {
+    for (const e of board.exams) {
+      const n = daysBetween(today, e.date);
+      const when = [e.start && `${e.start} 시작`, e.place].filter(Boolean).join(" · ");
+      if (n === 7 && nowMin >= evening) {
+        add(`exam-d7-${e.id}-${today}`, `🐯 ${e.subject} 시험까지 딱 일주일 남았어 (${shortDate(e.date)}). 슬슬 족보 돌려보자!`, "study_exams");
+      }
+      if (n === 1 && nowMin >= evening) {
+        add(`exam-eve-${e.id}-${today}`, `🐯 내일 ${e.subject} 시험이야!${when ? ` (${when})` : ""} 마지막 정리하고 일찍 자자.`, "study_exams");
+      }
+      const start = minutes(e.start);
+      if (n === 0 && nowMin >= morning && (start == null || nowMin < start)) {
+        add(`exam-day-${e.id}-${today}`, `🐯 오늘 ${e.subject} 시험!${when ? ` (${when})` : ""} 어흥이가 응원할게, 화이팅!`, "study_exams");
+      }
+    }
+  }
+  if (tg.remindTask) {
+    for (const t of openTasks(board)) {
+      if (!t.due) continue;
+      const n = daysBetween(today, t.due);
+      if (n === 1 && nowMin >= evening) {
+        add(`task-eve-${t.id}-${today}`, `🐯 '${t.title}' 마감이 내일이야. 잊지 마!`, "study_tasks");
+      }
+      if (n === 0 && nowMin >= morning) {
+        add(`task-day-${t.id}-${today}`, `🐯 오늘이 '${t.title}' 마감이야!`, "study_tasks");
+      }
+    }
+  }
+  return out;
+}
+
+export function markSent(board: Board, keys: string[]): Board {
+  if (keys.length === 0) return board;
+  const sent = [...board.telegram.sent, ...keys].slice(-MAX_SENT);
+  return { ...board, telegram: { ...board.telegram, sent } };
+}
+
+// ── Telegram updates ─────────────────────────────────────────────────────────
+
+/** The Bot API's update, the fields we read. */
+export interface TgUpdate {
+  update_id: number;
+  message?: TgMessage;
+  channel_post?: TgMessage;
+  edited_channel_post?: TgMessage;
+  my_chat_member?: { chat: TgChat; new_chat_member?: { status?: string } };
+}
+
+interface TgChat {
+  id: number;
+  type: string;
+  title?: string;
+  first_name?: string;
+  last_name?: string;
+  username?: string;
+}
+
+interface TgMessage {
+  message_id: number;
+  date: number;
+  chat: TgChat;
+  from?: { first_name?: string; last_name?: string; username?: string; is_bot?: boolean };
+  author_signature?: string;
+  sender_chat?: { title?: string };
+  text?: string;
+  caption?: string;
+}
+
+export interface UpdatesResult {
+  board: Board;
+  /** Notices that just came in, newest last. */
+  added: Notice[];
+  /** Messages to send back (pairing confirmations). */
+  replies: { chatId: number; text: string }[];
+  /** Set when this batch paired the user's own chat. */
+  paired: boolean;
+}
+
+const personName = (p?: { first_name?: string; last_name?: string; username?: string }) =>
+  [p?.first_name, p?.last_name].filter(Boolean).join(" ") || (p?.username ? `@${p.username}` : "");
+
+/** A 4-digit code to send the bot. */
+export function makePairCode(): string {
+  return String(Math.floor(1000 + Math.random() * 9000));
+}
+
+/**
+ * Folds a batch of updates into the board: group and channel posts become notices,
+ * the pairing message sets the user's own chat, and the offset moves past the batch.
+ */
+export function applyUpdates(board: Board, updates: TgUpdate[]): UpdatesResult {
+  const tg = { ...board.telegram, chats: { ...board.telegram.chats } };
+  const notices = [...board.notices];
+  const known = new Set(notices.map((n) => n.id));
+  const added: Notice[] = [];
+  const replies: { chatId: number; text: string }[] = [];
+  let paired = false;
+
+  for (const u of updates) {
+    if (typeof u.update_id === "number") tg.offset = Math.max(tg.offset, u.update_id + 1);
+    if (u.my_chat_member) {
+      const c = u.my_chat_member.chat;
+      if (c.type !== "private") {
+        const left = ["left", "kicked"].includes(u.my_chat_member.new_chat_member?.status ?? "");
+        const prev = tg.chats[String(c.id)];
+        if (left) delete tg.chats[String(c.id)];
+        else tg.chats[String(c.id)] = { title: c.title ?? String(c.id), kind: c.type, muted: prev?.muted ?? false };
+      }
+      continue;
+    }
+    const m = u.message ?? u.channel_post ?? u.edited_channel_post;
+    if (!m?.chat) continue;
+    const text = (m.text ?? m.caption ?? "").trim();
+    if (m.chat.type === "private") {
+      // Only the pairing code matters in a private chat: anyone else is ignored.
+      const code = tg.pairCode;
+      if (code && text.replace(/^\/start\s*/, "").trim() === code) {
+        tg.ownerChatId = m.chat.id;
+        tg.ownerName = personName(m.chat) || personName(m.from);
+        tg.pairCode = "";
+        paired = true;
+        replies.push({
+          chatId: m.chat.id,
+          text: "🐯 연결됐어! 이제 시험 전날이랑 과제 마감 전에 어흥이가 여기로 알려줄게.",
+        });
+      }
+      continue;
+    }
+    const key = String(m.chat.id);
+    const prev = tg.chats[key];
+    tg.chats[key] = { title: m.chat.title ?? prev?.title ?? key, kind: m.chat.type, muted: prev?.muted ?? false };
+    if (!text || tg.chats[key].muted) continue;
+    if (m.from?.is_bot) continue;
+    const id = `tg-${m.chat.id}-${m.message_id}`;
+    const author = m.author_signature || personName(m.from) || m.sender_chat?.title || "";
+    if (known.has(id)) {
+      // An edited channel post replaces the text it had.
+      const i = notices.findIndex((n) => n.id === id);
+      if (i >= 0) notices[i] = { ...notices[i], text };
+      continue;
+    }
+    const notice: Notice = {
+      id, source: "telegram", chat: tg.chats[key].title, author, text: text.slice(0, 2000),
+      date: (m.date || 0) * 1000, read: false,
+    };
+    known.add(id);
+    notices.push(notice);
+    added.push(notice);
+  }
+
+  notices.sort((a, b) => a.date - b.date);
+  return {
+    board: { ...board, notices: notices.slice(-MAX_NOTICES), telegram: tg },
+    added,
+    replies,
+    paired,
+  };
+}
