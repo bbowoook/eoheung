@@ -12,7 +12,7 @@ import { hero, liveMochi, setWindowShown } from "./hero";
 import { icon, keyLabel } from "./ui";
 
 export type PageId =
-  | "study-exams" | "study-classes" | "study-tasks" | "study-telegram"
+  | "study-exams" | "study-classes" | "study-tasks" | "study-life" | "study-telegram"
   | "dictation" | "notes" | "insights" | "dictionary" | "snippets" | "styles" | "flowsettings"
   | "general" | "pills" | "agents" | "chat" | "voice" | "integrations" | "phone" | "shortcuts";
 
@@ -39,6 +39,7 @@ export const STUDY_PAGES: PageDef[] = [
   { id: "study-exams", icon: "chart", title: () => "시험" },
   { id: "study-classes", icon: "grid", title: () => "시간표" },
   { id: "study-tasks", icon: "bolt", title: () => "과제" },
+  { id: "study-life", icon: "sun", title: () => "날씨 · D-day · 메모" },
   { id: "study-telegram", icon: "chat", title: () => "텔레그램 · 공지" },
 ];
 

@@ -48,7 +48,7 @@ jobs:
           TZ: Asia/Seoul
         run: |
           npx tsc --noEmit
-          node --import ./tests/setup.mjs --test tests/study.test.mjs
+          node --import ./tests/setup.mjs --test tests/study.test.mjs tests/weather.test.mjs
 
       - name: Build the installer
         id: pack

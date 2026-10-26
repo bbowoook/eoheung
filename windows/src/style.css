@@ -3173,7 +3173,7 @@ html[data-dir="rtl"] #views :is(.bubble, .reply .md-p, .reply .md-h, .reply .md-
   cursor: default;
 }
 
-.st-day { min-width: 58px; }
+.st-day { min-width: 0; }
 .st-arrow:hover, .st-day:hover { background: rgba(255, 255, 255, 0.1); color: var(--ink); }
 
 .st-notice {
@@ -3225,3 +3225,140 @@ html[data-dir="rtl"] #views :is(.bubble, .reply .md-p, .reply .md-h, .reply .md-
 .st-row.st-two .st-chip { margin-top: 1px; }
 .st-col { display: flex; flex-direction: column; min-width: 0; gap: 1px; }
 .st-col .st-main { white-space: normal; }
+
+/* ── 어흥이 1.1: week timetable, weather, D-day, memo ───────────────────── */
+
+.overview.st-wide > .left { flex: 1 1 auto; width: auto; }
+.overview.st-wide > .right { display: none; }
+
+.st-weekbtn { margin-left: 4px; color: #8fb3ff; }
+.st-weekbtn.on { background: rgba(91, 141, 239, 0.18); }
+
+.st-week {
+  display: grid;
+  gap: 6px;
+  padding-top: 8px;
+  min-height: 0;
+}
+
+.st-wcol {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.st-wday {
+  font: 600 10.5px var(--font);
+  color: var(--dim-2);
+  padding: 0 4px 2px;
+}
+
+.st-wcol.today .st-wday { color: #f6b37b; }
+.st-wcol.today { background: rgba(243, 144, 64, 0.06); border-radius: 7px; }
+
+.st-wcell {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  padding: 2px 5px;
+  border-radius: 5px;
+  background: rgba(91, 141, 239, 0.1);
+  min-width: 0;
+}
+
+.st-wcell.st-now { background: rgba(91, 141, 239, 0.3); }
+.st-wcell.st-past { opacity: 0.4; }
+
+.st-wtime { font: 500 9.5px var(--mono); color: #8fb3ff; }
+
+.st-wsub {
+  font: 500 10.5px var(--font);
+  color: #e6e8eb;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.st-wnone { font: 400 10px var(--font); color: var(--dim-4); padding: 2px 5px; }
+
+.st-wchip {
+  margin-left: auto;
+  border: 0;
+  background: rgba(56, 189, 248, 0.12);
+  color: #bfe7fb;
+  font: 500 11px var(--font);
+  border-radius: 6px;
+  padding: 1px 7px;
+  cursor: default;
+}
+
+.st-wnow { display: flex; align-items: center; gap: 8px; padding-top: 6px; }
+.st-wicon { font-size: 26px; line-height: 1; }
+.st-wtemp { font: 600 26px var(--font); color: var(--ink); letter-spacing: -0.02em; }
+
+.st-rain { font: 500 11.5px var(--font); color: #9fd8f5; padding-top: 4px; }
+.st-rain.wet { color: #7cc8ff; }
+
+.st-hours { display: flex; gap: 6px; padding-top: 6px; }
+
+.st-hour {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1 1 0;
+  padding: 2px 0;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.st-hl { font: 400 10.5px var(--font); color: var(--dim); }
+.st-ht { font: 600 11.5px var(--font); color: #e6e8eb; }
+.st-ht i { font-style: normal; }
+
+.st-chance { font: 500 9.5px var(--font); color: #7cc8ff; min-height: 12px; }
+
+.st-dust { display: flex; align-items: center; gap: 4px; padding-top: 7px; min-width: 0; }
+.st-dl { flex: 0 0 auto; }
+.st-grade { font: 600 10.5px var(--font); margin-right: 6px; flex: 0 0 auto; }
+
+.st-tip {
+  font: 500 11px var(--font);
+  color: #f6b37b;
+  padding-top: 5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.st-hint { font: 400 10.5px var(--font); color: #ff8d97; min-height: 0; padding-top: 2px; }
+.st-hint:empty { display: none; }
+
+.st-x {
+  border: 0;
+  background: transparent;
+  color: var(--dim-4);
+  font: 500 13px var(--font);
+  padding: 0 2px;
+  margin-left: auto;
+  cursor: default;
+  flex: 0 0 auto;
+}
+
+.st-x:hover { color: #ff8d97; }
+.st-row > .st-chip + .st-main + .st-sub + .st-x { margin-left: 4px; }
+
+.st-pin {
+  border: 0;
+  background: transparent;
+  color: var(--dim-3);
+  font-size: 11px;
+  width: 16px;
+  padding: 0;
+  cursor: default;
+  flex: 0 0 auto;
+}
+
+.st-memotext { flex: 1 1 auto; }
+.st-memo.pinned { background: rgba(247, 179, 43, 0.08); }

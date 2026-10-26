@@ -76,6 +76,32 @@ export interface TelegramState {
   sent: string[];
 }
 
+export interface Memo {
+  id: string;
+  text: string;
+  pinned: boolean;
+  created: number;
+}
+
+/** A date to count down to that isn't an exam: 국시, 방학, a birthday, a trip. */
+export interface DdayEvent {
+  id: string;
+  title: string;
+  /** YYYY-MM-DD; for a yearly one, the year of the first time. */
+  date: string;
+  /** Birthdays and anniversaries come back every year. */
+  yearly: boolean;
+}
+
+/** Where the weather is for. */
+export interface Place {
+  name: string;
+  lat: number;
+  lon: number;
+}
+
+export const DEFAULT_PLACE: Place = { name: "고양시 일산", lat: 37.6584, lon: 126.832 };
+
 export interface Board {
   version: 1;
   semester: string;
@@ -83,6 +109,9 @@ export interface Board {
   classes: ClassItem[];
   tasks: Task[];
   notices: Notice[];
+  memos: Memo[];
+  events: DdayEvent[];
+  place: Place;
   telegram: TelegramState;
 }
 
@@ -141,6 +170,19 @@ export function normalizeBoard(raw: unknown): Board {
       done: t.done === true, doneAt: typeof t.doneAt === "number" ? t.doneAt : null,
       created: typeof t.created === "number" ? t.created : 0,
     })).filter((t) => t.title),
+    memos: arr(o.memos).map((m) => ({
+      id: str(m.id) || newId(), text: str(m.text), pinned: m.pinned === true,
+      created: typeof m.created === "number" ? m.created : 0,
+    })).filter((m) => m.text),
+    events: arr(o.events).map((e) => ({
+      id: str(e.id) || newId(), title: str(e.title), date: date(e.date), yearly: e.yearly === true,
+    })).filter((e) => e.title && e.date),
+    place: (() => {
+      const p = (o.place && typeof o.place === "object" ? o.place : {}) as Record<string, unknown>;
+      const lat = typeof p.lat === "number" && Math.abs(p.lat) <= 90 ? p.lat : null;
+      const lon = typeof p.lon === "number" && Math.abs(p.lon) <= 180 ? p.lon : null;
+      return lat != null && lon != null ? { name: str(p.name, "내 지역"), lat, lon } : { ...DEFAULT_PLACE };
+    })(),
     notices: arr(o.notices).map((n) => ({
       id: str(n.id) || newId(), source: n.source === "manual" ? "manual" as const : "telegram" as const,
       chat: str(n.chat), author: str(n.author), text: str(n.text),
@@ -526,4 +568,76 @@ export function applyUpdates(board: Board, updates: TgUpdate[]): UpdatesResult {
     replies,
     paired,
   };
+}
+
+// ── Memos and D-days ─────────────────────────────────────────────────────────
+
+/** Pinned first, then newest first. */
+export function sortedMemos(board: Board): Memo[] {
+  return [...board.memos].sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.created - a.created);
+}
+
+/** The next time `e` comes round, on or after `today` (a past one-off stays where it was). */
+export function nextOccurrence(e: DdayEvent, today: string): string {
+  if (!e.yearly) return e.date;
+  const year = Number(today.slice(0, 4));
+  const md = e.date.slice(5);
+  // 29 February in a year without it falls on the 28th.
+  const fit = (y: number) => {
+    const cand = `${y}-${md}`;
+    return parseYmd(cand).getMonth() + 1 === Number(md.slice(0, 2)) ? cand : `${y}-02-28`;
+  };
+  const thisYear = fit(year);
+  return thisYear >= today ? thisYear : fit(year + 1);
+}
+
+/** Every D-day with its next date and how far it is, soonest first; past one-offs last. */
+export function upcomingEvents(board: Board, today: string): { e: DdayEvent; date: string; n: number }[] {
+  return board.events
+    .map((e) => {
+      const d = nextOccurrence(e, today);
+      return { e, date: d, n: daysBetween(today, d) };
+    })
+    .sort((a, b) => (a.n < 0 ? 1 : 0) - (b.n < 0 ? 1 : 0) || Math.abs(a.n) - Math.abs(b.n));
+}
+
+/**
+ * "국시 2027-01-16", "방학 12/19", "엄마 생일 3/14" → a D-day. A birthday (생일),
+ * an anniversary (기념일) or anything with "매년" comes back every year. Null when
+ * no date is found.
+ */
+export function parseDday(text: string, today: string): { title: string; date: string; yearly: boolean } | null {
+  let t = text.trim();
+  let date = "";
+  const full = t.match(/(?:^|\s)(\d{4})[-./](\d{1,2})[-./](\d{1,2})(?=\s|$)/);
+  if (full) {
+    date = `${full[1]}-${pad(Number(full[2]))}-${pad(Number(full[3]))}`;
+    t = t.replace(full[0], " ");
+  } else {
+    const q = parseQuickTask(t, today);
+    if (!q.due) return null;
+    date = q.due;
+    t = q.title;
+  }
+  const yearly = /생일|기념일|매년/.test(t);
+  t = t.replace(/매년/g, " ").replace(/\s+/g, " ").trim();
+  if (!t || !DATE.test(date)) return null;
+  return { title: t, date, yearly };
+}
+
+/**
+ * The day the 시간표 card shows by itself: today while it still has classes to
+ * come, else the next day that has some (within a week), so in the evening it
+ * already shows tomorrow.
+ */
+export function autoClassDay(board: Board, now: Date): { day: string; label: string } {
+  const today = ymd(now);
+  const items = classesOn(board, today);
+  const left = classPhases(items, now).some((p) => p !== "past");
+  if (items.length > 0 && left) return { day: today, label: "오늘" };
+  for (let i = 1; i <= 7; i++) {
+    const d = addDays(today, i);
+    if (classesOn(board, d).length > 0) return { day: d, label: i === 1 ? "내일" : "다음 수업" };
+  }
+  return { day: today, label: "오늘" };
 }

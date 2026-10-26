@@ -210,6 +210,8 @@ export const Bridge = {
   telegramCheck: () => callOrThrow<{ username: string | null; name: string | null }>("telegram_check"),
   telegramUpdates: (offset: number) => callOrThrow<unknown[]>("telegram_updates", { offset }),
   telegramSend: (chatId: number, text: string) => callOrThrow<void>("telegram_send", { chatId, text }),
+  weatherGet: (lat: number, lon: number) => callOrThrow<unknown>("weather_get", { lat, lon }),
+  weatherSearch: (name: string) => callOrThrow<{ name: string; admin: string | null; country: string | null; lat: number; lon: number }[]>("weather_search", { name }),
   boot: () => call<BootInfo>("boot"),
   /** The system's languages as the webview sees them, for Rust's own texts (i18n.rs). */
   setSystemLanguages: (languages: string[]) => call<void>("set_system_languages", { languages }),

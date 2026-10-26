@@ -173,7 +173,9 @@ export const DEFAULT_SETTINGS: Settings = {
   openOnHover: false,
   showClock: false,
   absenceInterval: 180,
-  activeIntegrations: ["study_exams", "study_classes", "study_tasks", "study_notices"],
+  activeIntegrations: [
+    "study_exams", "study_classes", "study_tasks", "study_weather", "study_notices", "study_dday", "study_memo",
+  ],
   mainPill: DEFAULT_MAIN_PILL,
   screen: "primary",
   autostart: true,

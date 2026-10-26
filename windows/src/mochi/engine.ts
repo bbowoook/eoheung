@@ -9,7 +9,7 @@ import { Sound } from "../core/sound";
 import type { BotEmoteName, BotStateName } from "../core/layout";
 import { PUMPKIN_BODY, drawOutfitBehind, drawOutfitFront, makeHead } from "./outfits";
 import type { Outfit } from "./wardrobe";
-import { TIGER, drawEars, drawMarkings, drawTigerEye, projector, rgbCss } from "./tiger";
+import { TIGER, drawEars, drawMarkings, drawTigerEye, drawWhiskers, eyeScale, projector, rgbCss } from "./tiger";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -848,13 +848,12 @@ export class BotEngine {
       x.restore();
     }
 
+    const face = projector(rx, ry, this.yaw, this.pitch + (this.rigidRoll ? 0 : this.roll));
     x.save();
     x.clip(body);
-    drawMarkings(
-      x, projector(rx, ry, this.yaw, this.pitch + (this.rigidRoll ? 0 : this.roll)), R, EYE_P, EYE_SP,
-      1 - this.morph, this.isMini,
-    );
+    drawMarkings(x, face, R, EYE_P, EYE_SP, 1 - this.morph, this.isMini);
     x.restore();
+    if (!this.isMini) drawWhiskers(x, face, R, EYE_P, 1 - this.morph);
 
     this.drawEyes(x, body, R, rx, ry);
     if (this.morph > 0.05) this.drawMouth(x, body, R);
@@ -1009,7 +1008,7 @@ export class BotEngine {
       case "pill": {
         const hh = Math.max(h * this.open, w * 0.3);
         if (!this.isMini) {
-          drawTigerEye(x, w * 1.05, hh * 1.05);
+          drawTigerEye(x, w * eyeScale(), hh * eyeScale());
           break;
         }
         roundRectPath(x, -w / 2, -hh / 2, w, hh, Math.min(w / 2, hh / 2));

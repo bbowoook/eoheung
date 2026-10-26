@@ -5,7 +5,7 @@
 
 import { closeCurve } from "../core/anim";
 import { Sound } from "../core/sound";
-import { TIGER, drawEars, drawMarkings, drawTigerEye, projector, rgbCss } from "./tiger";
+import { TIGER, drawEars, drawMarkings, drawTigerEye, drawWhiskers, projector, rgbCss } from "./tiger";
 import { COMPACT_W, NOTCH_H, NOTCH_W } from "../core/layout";
 
 // ── Timing (GT in the Swift file) ─────────────────────────────────────────────
@@ -462,8 +462,10 @@ function drawMochi(x: CanvasRenderingContext2D, p: Pose) {
   whiteFill(x, body, hw * 0.6, -hh, -hw * 0.6, hh);
   x.save();
   x.clip(body);
-  drawMarkings(x, projector(hw, hh, p.lookX * 0.4, -p.lookY * 0.25 - p.eyeRoll * 1.2), hh, -0.12, 0.3, 1, false);
+  const face = projector(hw, hh, p.lookX * 0.4, -p.lookY * 0.25 - p.eyeRoll * 1.2);
+  drawMarkings(x, face, hh, -0.12, 0.3, 1, false);
   x.restore();
+  drawWhiskers(x, face, hh, -0.12, 1);
 
   if (p.tint > 0) {
     const g = x.createLinearGradient(0, hh, 0, -hh * 0.1);

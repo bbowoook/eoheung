@@ -384,6 +384,7 @@ export const THEMES: Record<string, Theme> = {
   "study-exams": { color: "#F4505E", cast: [m("#F39040", 62, 0.3, { outfit: "roundGlasses" }), m("#F4505E", 46, 0.8)] },
   "study-classes": { color: "#5B8DEF", cast: [m("#F39040", 60, 0.25), m("#5B8DEF", 46, 0.7), m("#34D399", 40, 0.95)] },
   "study-tasks": { color: "#34D399", cast: [m("#F39040", 60, 0.35, { state: "working" }), m("#34D399", 46, 0.85)] },
+  "study-life": { color: "#38BDF8", cast: [m("#F39040", 60, 0.3, { outfit: "beanie" }), m("#38BDF8", 46, 0.65), m("#F472B6", 40, 0.95)] },
   "study-telegram": { color: "#A78BFA", cast: [m("#F39040", 58, 0.25, { outfit: "scarf" }), m("#A78BFA", 48, 0.75)] },
   dictation: { color: "#FB923C", cast: [m("#F39040", 66, 0.2), m("#FB923C", 52, 0.65), m("#F472B6", 44, 0.95, { outfit: "bow" })] },
   notes: { color: "#3B9EFF", cast: [m("#3B9EFF", 58, 0.1, { outfit: "roundGlasses" }), m("#34D399", 50, 0.5), m("#A78BFA", 46, 0.9)] },

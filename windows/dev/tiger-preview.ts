@@ -1,13 +1,15 @@
 // Dev harness: the tiger in a few states and head turns. Not part of the app bundle.
 import { BotEngine, hexToRGB } from "../src/mochi/engine";
+import { setTigerStyle } from "../src/mochi/tiger";
+setTigerStyle((new URLSearchParams(location.search).get("style") as never) ?? "cub");
 const stage = document.getElementById("stage")!;
 const params = new URLSearchParams(location.search);
 type Cfg = { state?: any; yaw?: number; pitch?: number; eye?: any; mini?: string; size?: number; outfit?: any };
 const cfgs: Cfg[] = [
-  { state: "idle" }, { state: "idle", yaw: 0.45 }, { state: "idle", yaw: -0.4, pitch: 0.2 },
-  { state: "idle", eye: "happy" }, { state: "idle", eye: "line" }, { state: "sleeping" },
-  { state: "approval" }, { state: "dizzy" }, { state: "idle", outfit: params.get("outfit") ?? "witchHat" },
-  { mini: "#F39040", size: 60 }, { mini: "#5B8DEF", size: 60 }, { mini: "#34D399", size: 60 },
+  { state: "idle", size: 260 }, { state: "idle", eye: "happy", size: 260 }, { state: "idle", eye: "line", size: 260 },
+  { state: "sleeping" }, { state: "dizzy" }, { state: "idle", eye: "heart" }, { state: "idle", eye: "star" },
+  { state: "idle", outfit: params.get("outfit") ?? "witchHat" }, { state: "idle", outfit: "santaHat" },
+  { state: "idle", size: 97 }, { mini: "#F39040", size: 40 }, { mini: "#F4505E", size: 40 }, { mini: "#5B8DEF", size: 40 }, { mini: "#34D399", size: 40 }, { mini: "#A78BFA", size: 40 },
 ];
 const items = cfgs.map((c) => {
   const size = c.size ?? 200;

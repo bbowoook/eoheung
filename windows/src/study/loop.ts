@@ -9,6 +9,7 @@ import { State } from "../core/state";
 import type { Island } from "../island/island";
 import { Study } from "./store";
 import { applyUpdates, markSent, remindersDue, type TgUpdate } from "./model";
+import { WEATHER_REFRESH_MS, Weather } from "./weather";
 
 const POLL_MS = 30_000;
 const REMIND_MS = 60_000;
@@ -86,7 +87,15 @@ async function remind(island: Island) {
 }
 
 export function startStudyLoops(island: Island) {
+  // The weather: at launch, every half hour, and at once when the place changes.
+  const weather = () => void Weather.refresh(Study.board.place);
+  Study.subscribe((b) => {
+    if (Weather.place && (Weather.place.lat !== b.place.lat || Weather.place.lon !== b.place.lon)) void Weather.refresh(b.place, true);
+  });
+  window.setInterval(weather, WEATHER_REFRESH_MS);
+  Weather.subscribe(() => State.notify());
   void Study.load().then(() => {
+    weather();
     window.setTimeout(() => void remind(island), 4_000);
     window.setTimeout(() => void pollTelegram(island), 6_000);
   });

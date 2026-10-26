@@ -17,6 +17,7 @@ import { Recap } from "./recap/recap";
 import { Updates } from "./island/update";
 import { WhatsNew } from "./whats-new/controller";
 import { startStudyLoops } from "./study/loop";
+import { MAX_DECLARED } from "./core/pills";
 import { onLanguageChange, resolveLanguage, setLanguage, systemLanguages } from "./i18n/i18n";
 
 /** Shows the language Settings asks for ("" = the system's, when Coucou has it). */
@@ -56,6 +57,22 @@ async function main() {
   // Rust shows the tray and its errors in the same language as the webview.
   void Bridge.setSystemLanguages(systemLanguages());
   island.applySettings();
+  // 어흥이 1.1: the weather, D-day and memo pills join an older install's list once.
+  try {
+    if (!localStorage.getItem("eoheung-pills-1.1")) {
+      const list = [...State.settings.activeIntegrations];
+      for (const id of ["study_weather", "study_dday", "study_memo"]) {
+        if (!list.includes(id) && id !== State.settings.mainPill && list.length < MAX_DECLARED) list.push(id);
+      }
+      if (list.length !== State.settings.activeIntegrations.length) {
+        State.settings.activeIntegrations = list;
+        void Bridge.saveSettings(State.settings);
+      }
+      localStorage.setItem("eoheung-pills-1.1", "1");
+    }
+  } catch {
+    /* no storage: nothing to migrate */
+  }
   State.loadIntegrationTasks();
   // 어흥이: the study board, Telegram and the reminders.
   startStudyLoops(island);

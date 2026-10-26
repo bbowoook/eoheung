@@ -425,6 +425,8 @@ function buildOverview(actions: ViewActions): ViewHost {
       }
 
       jump.style.display = detailOpen || mode === "plan" || mode === "diff" || mode === "study" ? "none" : "";
+      // 어흥이's week timetable takes the whole overview; the pills come back with the day view.
+      el.classList.toggle("st-wide", mode === "study" && studyCard.wide);
 
       // Ctrl+↓ Ctrl+↑ walk the open GitHub list (cardItemCount / cardSelection).
       const rows = mode === "card" ? listRows(leftBody) : [];
@@ -433,7 +435,7 @@ function buildOverview(actions: ViewActions): ViewHost {
       highlightRow(rows, State.cardSelection, State.cardSelection !== shownSelection);
       shownSelection = State.cardSelection;
 
-      const others = State.otherTasks.slice(0, 4);
+      const others = State.otherTasks.slice(0, 7);
       const pillKey = others.map((t) => `${t.id}:${t.color}:${t.pillBadge ?? ""}`).join("|");
       if (pillKey !== pillIds) {
         pillIds = pillKey;

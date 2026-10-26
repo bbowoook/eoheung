@@ -147,3 +147,53 @@ test("the bot leaving a group forgets it", () => {
   const r2 = applyUpdates(r1.board, [{ update_id: 2, my_chat_member: { chat: { id: -5, type: "group", title: "조별" }, new_chat_member: { status: "left" } } }]);
   assert.equal(r2.board.telegram.chats["-5"], undefined);
 });
+
+// ── 1.1: D-days, memos, the automatic 시간표 day ──────────────────────────────
+
+import { autoClassDay, nextOccurrence, parseDday, sortedMemos, upcomingEvents } from "../src/study/model.ts";
+
+test("a D-day typed in one line", () => {
+  const today = "2026-10-26";
+  assert.deepEqual(parseDday("한의사 국시 2027-01-16", today), { title: "한의사 국시", date: "2027-01-16", yearly: false });
+  assert.deepEqual(parseDday("겨울방학 12/19", today), { title: "겨울방학", date: "2026-12-19", yearly: false });
+  assert.deepEqual(parseDday("엄마 생일 3/14", today), { title: "엄마 생일", date: "2027-03-14", yearly: true });
+  assert.deepEqual(parseDday("매년 개강 기념 9/1", today).yearly, true);
+  assert.equal(parseDday("날짜 없음", today), null);
+});
+
+test("a yearly D-day comes round again; one-offs that passed go last", () => {
+  const e = { id: "b", title: "생일", date: "2001-11-14", yearly: true };
+  assert.equal(nextOccurrence(e, "2026-10-26"), "2026-11-14");
+  assert.equal(nextOccurrence(e, "2026-11-15"), "2027-11-14");
+  assert.equal(nextOccurrence({ ...e, date: "2000-02-29" }, "2026-01-01"), "2026-02-28");
+  const b = normalizeBoard({
+    events: [
+      { id: "old", title: "지난 일", date: "2026-10-01" },
+      { id: "far", title: "국시", date: "2027-01-16" },
+      e,
+    ],
+  });
+  assert.deepEqual(upcomingEvents(b, "2026-10-26").map((x) => x.e.id), ["b", "far", "old"]);
+});
+
+test("memos: pinned first, then newest", () => {
+  const b = normalizeBoard({ memos: [
+    { id: "a", text: "a", created: 1 }, { id: "b", text: "b", created: 3 }, { id: "p", text: "p", pinned: true, created: 0 },
+  ] });
+  assert.deepEqual(sortedMemos(b).map((m) => m.id), ["p", "b", "a"]);
+});
+
+test("the 시간표 card shows tomorrow once today's classes are over", () => {
+  const b = board();
+  assert.equal(autoClassDay(b, at("2026-10-27T10:00")).day, "2026-10-27");
+  const evening = autoClassDay(b, at("2026-10-26T20:00"));
+  assert.deepEqual(evening, { day: "2026-10-27", label: "내일" });
+  // After the last class of the 27th, nothing within a week: it stays on today.
+  assert.equal(autoClassDay(b, at("2026-10-27T19:00")).day, "2026-10-27");
+});
+
+test("the weather place falls back to 고양시 and refuses nonsense", () => {
+  assert.equal(normalizeBoard({}).place.name, "고양시 일산");
+  assert.equal(normalizeBoard({ place: { name: "x", lat: 200, lon: 0 } }).place.name, "고양시 일산");
+  assert.deepEqual(normalizeBoard({ place: { name: "경주", lat: 35.8, lon: 129.2 } }).place, { name: "경주", lat: 35.8, lon: 129.2 });
+});

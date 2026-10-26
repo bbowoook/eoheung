@@ -8,7 +8,7 @@ import { Bridge, IS_TAURI } from "../core/bridge";
 import { Study } from "../study/store";
 import {
   addDays, daysBetween, ddayLabel, makePairCode, mondayOf, newId, openTasks, parseQuickTask, shortDate,
-  upcomingExams, ymd, type Board, type ClassItem, type Exam, type Task,
+  sortedMemos, upcomingEvents, upcomingExams, ymd, type Board, type ClassItem, type Exam, type Place, type Task,
 } from "../study/model";
 import type { HubContext, FlowPageRenderer } from "../hub/shell";
 
@@ -414,7 +414,100 @@ export function weekOf(day: string): string[] {
   return Array.from({ length: 7 }, (_, i) => addDays(mon, i));
 }
 
+// ── 날씨 · D-day · 메모 ───────────────────────────────────────────────────────
+
+/** A few places a 동국대 student is likely to want, one click each. */
+const PLACE_PRESETS: Place[] = [
+  { name: "고양시 일산", lat: 37.6584, lon: 126.832 },
+  { name: "서울 중구 (동국대)", lat: 37.5582, lon: 126.9982 },
+  { name: "경주 (동국대)", lat: 35.8562, lon: 129.2247 },
+];
+
+export const renderLife: FlowPageRenderer = (container, ctx) => {
+  const root = page(container, ctx, "study-life", "날씨 · D-day · 메모", "날씨를 볼 지역, 기다리는 날들, 적어 둔 메모를 정리해.");
+  let results: { name: string; admin: string | null; country: string | null; lat: number; lon: number }[] = [];
+  let searchNote = "";
+  const repaint = () => void Study.update((b) => b);
+  live(root, ctx, () => {
+    const b = Study.board;
+    const today = ymd(new Date());
+
+    // Where the weather is for.
+    const query = input("text", "", "동네 이름으로 찾기 (예: 일산, 파주, 경주)", 260);
+    const search = h("button", {
+      text: "찾기",
+      onclick: async () => {
+        const q = query.value.trim();
+        if (!q) return;
+        searchNote = "찾는 중…";
+        try {
+          results = (await Bridge.weatherSearch(q)) ?? [];
+          searchNote = results.length ? "" : "찾는 곳이 없어. 다른 이름으로 해 봐";
+        } catch (e) {
+          results = [];
+          searchNote = String(e instanceof Error ? e.message : e);
+        }
+        repaint();
+      },
+    });
+    query.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.isComposing) search.click(); });
+    const choose = (p: Place) => {
+      results = [];
+      save((x) => ({ ...x, place: p }));
+    };
+    const weatherSec = section("날씨 지역",
+      h("div", { class: "row" }, h("label", { text: "지금" }), h("b", { text: b.place.name })),
+      h("div", { class: "row" }, ...PLACE_PRESETS.map((p) => h("button", { class: p.name === b.place.name ? "primary" : "", text: p.name, onclick: () => choose(p) }))),
+      h("div", { class: "row" }, query, search, searchNote ? h("span", { class: "hint", text: searchNote }) : null),
+      results.length ? h("div", { class: "st-table" }, ...results.map((r) => h("div", { class: "st-line" },
+        h("b", { text: r.name }),
+        h("span", { class: "hint", text: [r.admin, r.country].filter(Boolean).join(", ") }),
+        h("span", { class: "spacer" }),
+        h("button", { class: "primary", text: "이 곳으로", onclick: () => choose({ name: r.admin && r.admin !== r.name ? `${r.name} (${r.admin})` : r.name, lat: r.lat, lon: r.lon }) }),
+      ))) : null,
+      h("div", { class: "hint", text: "날씨와 미세먼지는 Open-Meteo에서 30분마다 가져와. 위치 좌표만 보내고 키는 필요 없어." }),
+    );
+
+    // D-days.
+    const title = input("text", "", "이름 (예: 한의사 국시)", 220);
+    const date = input("date", "", "", 150);
+    let yearly = false;
+    const yearlyToggle = toggle(false, (v) => { yearly = v; });
+    const add = h("button", {
+      class: "primary", text: "추가",
+      onclick: () => {
+        if (!title.value.trim() || !date.value) return;
+        save((x) => ({ ...x, events: [...x.events, { id: newId(), title: title.value.trim(), date: date.value, yearly }] }));
+      },
+    });
+    const ddays = upcomingEvents(b, today);
+    const ddaySec = section(`D-day ${ddays.length}개`,
+      h("div", { class: "st-table" }, ...(ddays.length ? ddays.map(({ e, date: d, n }) => h("div", { class: `st-line${n < 0 ? " past" : ""}` },
+        h("span", { class: "st-dday", text: ddayLabel(n) }),
+        h("b", { text: e.title }),
+        h("span", { class: "hint", text: `${shortDate(d)}${e.yearly ? " · 매년" : ""}` }),
+        h("span", { class: "spacer" }),
+        h("button", { class: "danger", text: "삭제", onclick: () => save((x) => ({ ...x, events: x.events.filter((y) => y.id !== e.id) })) }),
+      )) : [h("div", { class: "hint", text: "아직 없어. 섬의 D-day 알약에서 '국시 2027-01-16'처럼 바로 넣어도 돼." })])),
+      h("div", { class: "row" }, title, date, h("span", { class: "hint", text: "매년" }), yearlyToggle, add),
+    );
+
+    // Memos.
+    const memos = sortedMemos(b);
+    const memoSec = section(`메모 ${memos.length}개`,
+      h("div", { class: "st-table" }, ...(memos.length ? memos.map((m) => h("div", { class: "st-line" },
+        h("button", { text: m.pinned ? "📌 고정됨" : "고정", onclick: () => save((x) => ({ ...x, memos: x.memos.map((y) => (y.id === m.id ? { ...y, pinned: !y.pinned } : y)) })) }),
+        h("span", { class: "st-memo-text", text: m.text }),
+        h("span", { class: "spacer" }),
+        h("button", { class: "danger", text: "삭제", onclick: () => save((x) => ({ ...x, memos: x.memos.filter((y) => y.id !== m.id) })) }),
+      )) : [h("div", { class: "hint", text: "섬의 메모 알약에서 한 줄씩 적으면 여기 모여." })])),
+    );
+    return [weatherSec, ddaySec, memoSec];
+  });
+};
+
 export const STUDY_PAGE_RENDERERS = {
+  "study-life": renderLife,
   "study-exams": renderExams,
   "study-classes": renderClasses,
   "study-tasks": renderTasks,

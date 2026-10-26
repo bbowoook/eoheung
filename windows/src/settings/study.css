@@ -71,3 +71,6 @@
 }
 
 .st-code { font: 600 30px var(--mono); letter-spacing: 0.2em; color: #f6b37b; user-select: text; }
+
+.st-memo-text { white-space: pre-wrap; word-break: break-word; min-width: 0; }
+.st-line button.primary { color: #0b0c0e; }

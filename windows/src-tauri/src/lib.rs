@@ -34,6 +34,7 @@ mod sounds;
 mod speech;
 mod spotify;
 mod study;
+mod weather;
 mod tray;
 mod update;
 mod voice;
@@ -973,6 +974,8 @@ pub fn run() {
             study::telegram_check,
             study::telegram_updates,
             study::telegram_send,
+            weather::weather_get,
+            weather::weather_search,
         ])
         .setup(move |app| {
             let handle = app.handle().clone();

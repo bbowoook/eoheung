@@ -81,7 +81,13 @@ export const PILL_CATALOG: readonly PillDefinition[] = [
     subtitle: N_("Study"), source: "n8n", support: "yes", connect: none },
   { id: "study_tasks", name: "과제", color: "#34D399", category: "study",
     subtitle: N_("Study"), source: "n8n", support: "yes", connect: none },
+  { id: "study_weather", name: "날씨", color: "#38BDF8", category: "study",
+    subtitle: N_("Study"), source: "n8n", support: "yes", connect: none },
   { id: "study_notices", name: "공지", color: "#A78BFA", category: "study",
+    subtitle: N_("Study"), source: "n8n", support: "yes", connect: none },
+  { id: "study_dday", name: "D-day", color: "#F472B6", category: "study",
+    subtitle: N_("Study"), source: "n8n", support: "yes", connect: none },
+  { id: "study_memo", name: "메모", color: "#F7B32B", category: "study",
     subtitle: N_("Study"), source: "n8n", support: "yes", connect: none },
   // ── Where you code ─────────────────────────────────────────────────────────
   { id: "integration_claude", name: "Claude Code", color: "#F5F6F8", category: "workspace",
@@ -160,7 +166,8 @@ export const PILL_CATALOG: readonly PillDefinition[] = [
 export const DEFAULT_MAIN_PILL = "study_today";
 
 /** How many declared pills may sit next to the main one. */
-export const MAX_DECLARED = 4;
+/** 어흥이: room for all seven study pills beside 오늘 (two columns, four rows). */
+export const MAX_DECLARED = 7;
 
 /** The OS this page runs on. Only the Windows webview says "Windows". */
 export const HOST_OS: HostOs =
