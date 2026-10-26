@@ -139,6 +139,13 @@ export function buildStudyCard(host: StudyCardHost) {
     key = "";
     State.notify();
   });
+  // Folding the island brings the 시간표 card back to today and closes an opened notice.
+  State.subscribe(() => {
+    if (State.mode === "expanded" || (classDay == null && openNotice == null)) return;
+    classDay = null;
+    openNotice = null;
+    key = "";
+  });
 
   function today(): HTMLElement[] {
     const b = Study.board;
