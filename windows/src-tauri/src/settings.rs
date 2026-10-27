@@ -134,6 +134,7 @@ impl Default for Settings {
             absence_interval: 180.0,
             // 어흥이: the study board's pills (src/core/pills.ts), and he starts with Windows.
             active_integrations: vec![
+                "study_calendar".into(),
                 "study_exams".into(),
                 "study_classes".into(),
                 "study_tasks".into(),

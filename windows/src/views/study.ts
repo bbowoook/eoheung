@@ -8,14 +8,15 @@ import { State } from "../core/state";
 import { Bridge } from "../core/bridge";
 import { Study } from "../study/store";
 import {
-  addDays, autoClassDay, classPhases, classesOn, daysBetween, ddayLabel, headline, longDate, mondayOf, newId, openTasks, parseDday,
+  addDays, addMonths, appointmentsOn, autoClassDay, classPhases, classesOn, minutes, monthGrid, monthMarks,
+  parseAppointment, daysBetween, ddayLabel, headline, longDate, mondayOf, newId, openTasks, parseDday,
   parseQuickTask, shortDate, sortedMemos, sortedNotices, tasksDueWithin, unreadNotices, upcomingEvents, upcomingExams,
-  ymd, WEEKDAYS, type ClassItem, type Task,
+  ymd, WEEKDAYS, type Appointment, type ClassItem, type Task,
 } from "../study/model";
 import { Weather, dustGrade } from "../study/weather";
 
 export const STUDY_IDS = [
-  "study_today", "study_exams", "study_classes", "study_tasks", "study_weather", "study_notices", "study_dday", "study_memo",
+  "study_today", "study_calendar", "study_exams", "study_classes", "study_tasks", "study_weather", "study_notices", "study_dday", "study_memo",
 ] as const;
 export type StudyId = (typeof STUDY_IDS)[number];
 
@@ -69,6 +70,16 @@ function classRow(c: ClassItem, phase: string): HTMLElement {
   return row;
 }
 
+function apptRow(a: Appointment, remove?: () => void): HTMLElement {
+  const row = h("div", { class: "st-row st-appt" },
+    h("span", { class: "st-time", text: a.start ? (a.end ? `${a.start}` : a.start) : "종일" }),
+    h("span", { class: "st-main", text: a.title }),
+    h("span", { class: "st-sub", text: [a.end && `~${a.end}`, a.place].filter(Boolean).join(" · ") }),
+  );
+  if (remove) row.append(xButton("지우기", remove));
+  return row;
+}
+
 function xButton(label: string, run: () => void): HTMLElement {
   return h("button", {
     class: "st-x", text: "×", "aria-label": label,
@@ -96,6 +107,9 @@ export function buildStudyCard(host: StudyCardHost) {
   let week: string | null = null;
   /** The notice opened in full. */
   let openNotice: string | null = null;
+  /** The calendar's month ("YYYY-MM") and picked day; null = this month, today. */
+  let calMonth: string | null = null;
+  let calDay: string | null = null;
 
   /** A one-line field that keeps the keyboard and its draft across rebuilds. */
   function field(placeholder: string, onEnter: (text: string) => void): HTMLInputElement {
@@ -149,7 +163,23 @@ export function buildStudyCard(host: StudyCardHost) {
     host.holdOpen(false);
     void Study.update((b) => ({ ...b, events: [...b.events, { id: newId(), ...parsed }] }));
   });
-  const fields = [taskField, memoField, ddayField];
+  const apptHint = h("div", { class: "st-hint" });
+  const apptField = field("일정 추가 · 예) 3시 치과 @일산역", (text) => {
+    const today = ymd(new Date());
+    const parsed = parseAppointment(text, calDay ?? today, today);
+    if (!parsed) {
+      apptHint.textContent = "무슨 일정인지 이름도 적어 줘";
+      return;
+    }
+    apptHint.textContent = "";
+    apptField.value = "";
+    host.holdOpen(false);
+    // A date written in the line moves the calendar there, so the new one is seen.
+    calDay = parsed.date;
+    calMonth = parsed.date.slice(0, 7);
+    void Study.update((b) => ({ ...b, appointments: [...b.appointments, { id: newId(), ...parsed }] }));
+  });
+  const fields = [taskField, memoField, ddayField, apptField];
 
   Study.subscribe(() => {
     key = "";
@@ -157,10 +187,12 @@ export function buildStudyCard(host: StudyCardHost) {
   });
   // Folding the island brings the 시간표 card back to its own day and the day view.
   State.subscribe(() => {
-    if (State.mode === "expanded" || (classDay == null && week == null && openNotice == null)) return;
+    if (State.mode === "expanded" || (classDay == null && week == null && openNotice == null && calMonth == null && calDay == null)) return;
     classDay = null;
     week = null;
     openNotice = null;
+    calMonth = null;
+    calDay = null;
     key = "";
   });
 
@@ -206,6 +238,12 @@ export function buildStudyCard(host: StudyCardHost) {
     const classes = classesOn(b, day);
     const phases = classPhases(classes, now);
     const rows = h("div", { class: "st-list" });
+    const nowMin = now.getHours() * 60 + now.getMinutes();
+    const appts = appointmentsOn(b, day).filter((a) => {
+      const end = minutes(a.end) ?? minutes(a.start);
+      return end == null || end + (a.end ? 0 : 60) > nowMin;
+    });
+    for (const a of appts.slice(0, 2)) rows.append(apptRow(a));
     const left = classes.map((c, i) => ({ c, p: phases[i] })).filter((x) => x.p !== "past");
     if (left.length === 0) {
       const next = autoClassDay(b, now);
@@ -222,8 +260,9 @@ export function buildStudyCard(host: StudyCardHost) {
         ));
       }
     }
-    for (const { c, p } of left.slice(0, 3)) rows.append(classRow(c, p));
-    if (left.length > 3) rows.append(h("div", { class: "st-more", text: `수업 ${left.length - 3}개 더` }));
+    for (const { c, p } of left.slice(0, appts.length ? 2 : 3)) rows.append(classRow(c, p));
+    const shown = appts.length ? 2 : 3;
+    if (left.length > shown) rows.append(h("div", { class: "st-more", text: `수업 ${left.length - shown}개 더` }));
     for (const t of tasksDueWithin(b, day, 2).slice(0, 2)) rows.append(taskRow(t, day));
     out.push(rows);
     const unread = unreadNotices(b).length;
@@ -332,16 +371,110 @@ export function buildStudyCard(host: StudyCardHost) {
       const phases = d === todayStr ? classPhases(items, now) : items.map(() => (d < todayStr ? "past" : "later"));
       const col = h("div", { class: `st-wcol${d === todayStr ? " today" : ""}` },
         h("div", { class: "st-wday", text: `${WEEKDAYS[new Date(`${d}T12:00`).getDay()]} ${Number(d.slice(8))}` }));
-      if (items.length === 0) col.append(h("div", { class: "st-wnone", text: "—" }));
+      const own = appointmentsOn(b, d);
+      if (items.length === 0 && own.length === 0) col.append(h("div", { class: "st-wnone", text: "—" }));
+      // Classes and the user's own appointments, in time order (all-day ones first).
+      const cells: { at: string; el: HTMLElement }[] = [];
+      for (const a of own) {
+        cells.push({ at: a.start || "00:00", el: h("div", { class: "st-wcell st-wappt", title: [a.start && `${a.start}${a.end ? `–${a.end}` : ""}`, a.title, a.place].filter(Boolean).join(" · ") },
+          h("span", { class: "st-wtime", text: a.start ? a.start.replace(/^0/, "") : "종일" }),
+          h("span", { class: "st-wsub", text: a.title }),
+        ) });
+      }
       items.forEach((c, i) => {
-        col.append(h("div", { class: `st-wcell st-${phases[i]}`, title: [c.start && `${c.start}–${c.end}`, c.subject, c.who, c.note].filter(Boolean).join(" · ") },
+        cells.push({ at: c.start || "00:00", el: h("div", { class: `st-wcell st-${phases[i]}`, title: [c.start && `${c.start}–${c.end}`, c.subject, c.who, c.note].filter(Boolean).join(" · ") },
           h("span", { class: "st-wtime", text: c.start ? c.start.replace(/^0/, "") : "종일" }),
           h("span", { class: "st-wsub", text: c.subject }),
-        ));
+        ) });
       });
+      cells.sort((x, y) => x.at.localeCompare(y.at));
+      for (const c of cells) col.append(c.el);
       grid.append(col);
     }
     return [head("#5B8DEF", "시간표", "주간", nav), grid];
+  }
+
+  // ── 달력 ──
+
+  function calendar(): HTMLElement[] {
+    const b = Study.board;
+    const todayStr = ymd(new Date());
+    const month = calMonth ?? todayStr.slice(0, 7);
+    const picked = calDay ?? (month === todayStr.slice(0, 7) ? todayStr : `${month}-01`);
+    const marks = monthMarks(b, month, todayStr);
+    const go = (n: number) => {
+      calMonth = addMonths(month, n);
+      calDay = calMonth === todayStr.slice(0, 7) ? todayStr : `${calMonth}-01`;
+      redraw();
+    };
+    const [y, m] = month.split("-").map(Number);
+    const nav = h("span", { class: "st-nav" },
+      h("button", { class: "st-arrow", text: "‹", "aria-label": "지난달", onclick: () => go(-1) }),
+      h("button", { class: "st-day", text: `${y}년 ${m}월`, onclick: () => { calMonth = null; calDay = null; redraw(); } }),
+      h("button", { class: "st-arrow", text: "›", "aria-label": "다음 달", onclick: () => go(1) }),
+      h("button", { class: "st-day st-weekbtn on", text: "닫기", onclick: () => host.setFocus("study_today") }),
+    );
+
+    // The month: Monday first, a dot per kind of thing on each day.
+    const grid = h("div", { class: "st-month" });
+    for (const w of ["월", "화", "수", "목", "금", "토", "일"]) grid.append(h("div", { class: `st-mhead${w === "토" ? " sat" : w === "일" ? " sun" : ""}`, text: w }));
+    for (const d of monthGrid(month)) {
+      const mk = marks.get(d);
+      const dow = new Date(`${d}T12:00`).getDay();
+      const cls = [
+        "st-mday",
+        d.startsWith(month) ? "" : "out",
+        d === todayStr ? "today" : "",
+        d === picked ? "picked" : "",
+        dow === 6 ? "sat" : dow === 0 ? "sun" : "",
+        mk?.exams ? "exam" : "",
+      ].filter(Boolean).join(" ");
+      const dots = h("span", { class: "st-mdots" });
+      if (mk?.appointments) dots.append(h("i", { class: "d-appt" }));
+      if (mk?.exams) dots.append(h("i", { class: "d-exam" }));
+      if (mk?.tasks) dots.append(h("i", { class: "d-task" }));
+      if (mk?.ddays) dots.append(h("i", { class: "d-dday" }));
+      grid.append(h("button", {
+        class: cls,
+        onclick: () => {
+          calDay = d;
+          calMonth = d.slice(0, 7);
+          redraw();
+        },
+      }, h("span", { class: "st-mnum", text: String(Number(d.slice(8))) }), dots));
+    }
+
+    // The picked day: appointments (deletable), then exams, deadlines, D-days, classes.
+    const agenda = h("div", { class: "st-agenda" });
+    const dn = daysBetween(todayStr, picked);
+    const rel = dn === 0 ? "오늘" : dn === 1 ? "내일" : dn === -1 ? "어제" : dn > 0 ? `${dn}일 뒤` : `${-dn}일 전`;
+    agenda.append(h("div", { class: "st-ahead" }, h("b", { text: shortDate(picked) }), h("span", { class: "st-sub", text: rel })));
+    agenda.append(apptField, apptHint);
+    const list = h("div", { class: "st-list st-alist" });
+    for (const a of appointmentsOn(b, picked)) {
+      list.append(apptRow(a, () => void Study.update((x) => ({ ...x, appointments: x.appointments.filter((y) => y.id !== a.id) }))));
+    }
+    for (const e of b.exams.filter((x) => x.date === picked)) {
+      list.append(h("div", { class: "st-row" }, h("span", { class: "st-tag t-exam", text: "시험" }),
+        h("span", { class: "st-main", text: e.subject }), h("span", { class: "st-sub", text: e.start })));
+    }
+    for (const t of b.tasks.filter((x) => !x.done && x.due === picked)) {
+      list.append(h("div", { class: "st-row" }, h("span", { class: "st-tag t-task", text: "마감" }),
+        h("span", { class: "st-main", text: t.title })));
+    }
+    for (const { e } of upcomingEvents(b, picked).filter((x) => x.date === picked)) {
+      list.append(h("div", { class: "st-row" }, h("span", { class: "st-tag t-dday", text: "D-day" }),
+        h("span", { class: "st-main", text: e.title })));
+    }
+    const classes = classesOn(b, picked).filter((c) => c.start);
+    if (classes.length) {
+      list.append(h("div", { class: "st-row st-later" }, h("span", { class: "st-tag t-class", text: "수업" }),
+        h("span", { class: "st-sub", text: `${classes.length}개 · ${classes[0].start}–${classes[classes.length - 1].end}` })));
+    }
+    if (!list.childElementCount) list.append(h("div", { class: "st-quiet", text: "비어 있어. 위에 일정을 적어 봐" }));
+    agenda.append(list);
+
+    return [head("#F39040", "달력", "", nav), h("div", { class: "st-cal" }, grid, agenda)];
   }
 
   // ── 과제 ──
@@ -502,17 +635,18 @@ export function buildStudyCard(host: StudyCardHost) {
     el,
     /** The week view takes the whole overview. */
     get wide(): boolean {
-      return week != null;
+      return week != null || State.focusTask?.id === "study_calendar";
     },
     sync(id: StudyId) {
       if (id !== "study_classes") week = null;
       const minute = Math.floor(Date.now() / 60_000);
-      const next = `${id}~${minute}~${classDay}~${week}~${openNotice}~${Weather.fetchedAt}~${Weather.loading}~${JSON.stringify(Study.board)}`;
+      const next = `${id}~${minute}~${classDay}~${week}~${openNotice}~${calMonth}~${calDay}~${Weather.fetchedAt}~${Weather.loading}~${JSON.stringify(Study.board)}`;
       if (next === key) return;
       key = next;
       const focused = fields.find((f) => document.activeElement === f) ?? null;
       clear(el);
       const parts = id === "study_today" ? today()
+        : id === "study_calendar" ? calendar()
         : id === "study_exams" ? exams()
         : id === "study_classes" ? (week ? classesWeek() : classesDay())
         : id === "study_tasks" ? tasks()
@@ -528,6 +662,8 @@ export function buildStudyCard(host: StudyCardHost) {
       classDay = null;
       week = null;
       openNotice = null;
+      calMonth = null;
+      calDay = null;
       for (const f of fields) if (document.activeElement === f) f.blur();
     },
   };

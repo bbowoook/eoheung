@@ -3362,3 +3362,101 @@ html[data-dir="rtl"] #views :is(.bubble, .reply .md-p, .reply .md-h, .reply .md-
 
 .st-memotext { flex: 1 1 auto; }
 .st-memo.pinned { background: rgba(247, 179, 43, 0.08); }
+
+/* ── 어흥이 1.2: the month calendar and appointments ─────────────────────── */
+
+.st-cal {
+  display: grid;
+  grid-template-columns: 252px minmax(0, 1fr);
+  gap: 12px;
+  padding-top: 4px;
+  min-height: 0;
+}
+
+.st-month {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  grid-auto-rows: 24px;
+  gap: 1px 2px;
+}
+
+.st-month .st-mhead {
+  font: 600 10px var(--font);
+  color: var(--dim-3);
+  text-align: center;
+  line-height: 16px;
+  height: 16px;
+}
+
+.st-month { grid-template-rows: 16px; }
+.st-mhead.sat, .st-mday.sat .st-mnum { color: #8fb3ff; }
+.st-mhead.sun, .st-mday.sun .st-mnum { color: #ff8d97; }
+
+.st-mday {
+  position: relative;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  padding: 1px 0 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  cursor: default;
+  min-width: 0;
+}
+
+.st-mday:hover { background: rgba(255, 255, 255, 0.06); }
+.st-mday.out { opacity: 0.32; }
+.st-mday.exam { background: rgba(244, 80, 94, 0.1); }
+.st-mday.today .st-mnum { color: #0b0c0e; background: #f39040; }
+.st-mday.picked { box-shadow: inset 0 0 0 1.5px rgba(243, 144, 64, 0.85); }
+
+.st-mnum {
+  font: 500 11px var(--font);
+  color: #e6e8eb;
+  width: 18px;
+  height: 16px;
+  line-height: 16px;
+  border-radius: 6px;
+  text-align: center;
+}
+
+.st-mdots { display: flex; gap: 2px; height: 4px; margin-top: 1px; }
+.st-mdots i { width: 4px; height: 4px; border-radius: 50%; }
+.st-mdots .d-appt, .st-tag.t-appt { background: #fb923c; }
+.st-mdots .d-exam { background: #f4505e; }
+.st-mdots .d-task { background: #34d399; }
+.st-mdots .d-dday { background: #f472b6; }
+
+.st-agenda {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border-left: 1px solid rgba(255, 255, 255, 0.05);
+  padding-left: 12px;
+}
+
+.st-ahead { display: flex; align-items: baseline; gap: 6px; }
+.st-ahead b { font: 600 12.5px var(--font); color: var(--ink); }
+.st-agenda .st-input { margin-top: 5px; }
+.st-alist { overflow-y: auto; max-height: 132px; }
+
+.st-row.st-appt .st-time { color: #fdba74; }
+.st-row.st-appt { background: rgba(251, 146, 60, 0.08); }
+
+.st-tag {
+  font: 600 9.5px var(--font);
+  border-radius: 4px;
+  padding: 1px 5px;
+  flex: 0 0 auto;
+  color: #0b0c0e;
+}
+
+.st-tag.t-exam { background: #f4505e; }
+.st-tag.t-task { background: #34d399; }
+.st-tag.t-dday { background: #f472b6; }
+.st-tag.t-class { background: #5b8def; }
+
+.st-wcell.st-wappt { background: rgba(251, 146, 60, 0.18); }
+.st-wcell.st-wappt .st-wtime { color: #fdba74; }

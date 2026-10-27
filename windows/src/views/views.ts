@@ -435,7 +435,7 @@ function buildOverview(actions: ViewActions): ViewHost {
       highlightRow(rows, State.cardSelection, State.cardSelection !== shownSelection);
       shownSelection = State.cardSelection;
 
-      const others = State.otherTasks.slice(0, 7);
+      const others = State.otherTasks.slice(0, 8);
       const pillKey = others.map((t) => `${t.id}:${t.color}:${t.pillBadge ?? ""}`).join("|");
       if (pillKey !== pillIds) {
         pillIds = pillKey;

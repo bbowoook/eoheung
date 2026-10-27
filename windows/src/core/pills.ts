@@ -75,6 +75,8 @@ export const PILL_CATALOG: readonly PillDefinition[] = [
   // ── 어흥이's study board (src/study) ───────────────────────────────────────
   { id: "study_today", name: "오늘", color: "#F39040", category: "study",
     subtitle: N_("Study"), source: "n8n", support: "yes", connect: none },
+  { id: "study_calendar", name: "달력", color: "#FB923C", category: "study",
+    subtitle: N_("Study"), source: "n8n", support: "yes", connect: none },
   { id: "study_exams", name: "시험", color: "#F4505E", category: "study",
     subtitle: N_("Study"), source: "n8n", support: "yes", connect: none },
   { id: "study_classes", name: "시간표", color: "#5B8DEF", category: "study",
@@ -166,8 +168,8 @@ export const PILL_CATALOG: readonly PillDefinition[] = [
 export const DEFAULT_MAIN_PILL = "study_today";
 
 /** How many declared pills may sit next to the main one. */
-/** 어흥이: room for all seven study pills beside 오늘 (two columns, four rows). */
-export const MAX_DECLARED = 7;
+/** 어흥이: room for all eight study pills beside 오늘 (two columns, four rows). */
+export const MAX_DECLARED = 8;
 
 /** The OS this page runs on. Only the Windows webview says "Windows". */
 export const HOST_OS: HostOs =

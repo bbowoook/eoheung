@@ -93,6 +93,17 @@ export interface DdayEvent {
   yearly: boolean;
 }
 
+/** Something of the user's own on a day: 약속, 치과, 스터디. */
+export interface Appointment {
+  id: string;
+  title: string;
+  date: string;
+  /** HH:MM, "" for all day. */
+  start: string;
+  end: string;
+  place: string;
+}
+
 /** Where the weather is for. */
 export interface Place {
   name: string;
@@ -111,6 +122,7 @@ export interface Board {
   notices: Notice[];
   memos: Memo[];
   events: DdayEvent[];
+  appointments: Appointment[];
   place: Place;
   telegram: TelegramState;
 }
@@ -177,6 +189,10 @@ export function normalizeBoard(raw: unknown): Board {
     events: arr(o.events).map((e) => ({
       id: str(e.id) || newId(), title: str(e.title), date: date(e.date), yearly: e.yearly === true,
     })).filter((e) => e.title && e.date),
+    appointments: arr(o.appointments).map((a) => ({
+      id: str(a.id) || newId(), title: str(a.title), date: date(a.date), start: time(a.start), end: time(a.end),
+      place: str(a.place),
+    })).filter((a) => a.title && a.date),
     place: (() => {
       const p = (o.place && typeof o.place === "object" ? o.place : {}) as Record<string, unknown>;
       const lat = typeof p.lat === "number" && Math.abs(p.lat) <= 90 ? p.lat : null;
@@ -640,4 +656,125 @@ export function autoClassDay(board: Board, now: Date): { day: string; label: str
     if (classesOn(board, d).length > 0) return { day: d, label: i === 1 ? "내일" : "다음 수업" };
   }
   return { day: today, label: "오늘" };
+}
+
+// ── The calendar: appointments and what each day holds ───────────────────────
+
+export function appointmentsOn(board: Board, day: string): Appointment[] {
+  return board.appointments.filter((a) => a.date === day).sort(byDateTime);
+}
+
+/** "3", "15:30", "3시", "3시 반", "오후 3시", "3:30pm" → "HH:MM", with 오전/오후 applied. */
+function clock(h: number, m: number, ampm: string | undefined): string | null {
+  let hour = h;
+  if (ampm === "오후" || ampm === "pm" || ampm === "저녁" || ampm === "밤") {
+    if (hour < 12) hour += 12;
+  } else if (ampm === "오전" || ampm === "am" || ampm === "아침" || ampm === "새벽") {
+    if (hour === 12) hour = 0;
+  } else if (ampm == null && hour >= 1 && hour <= 7) {
+    // Nobody makes a 3 a.m. appointment: "3시 스터디" is in the afternoon.
+    hour += 12;
+  }
+  if (hour > 23 || m > 59) return null;
+  return `${pad(hour)}:${pad(m)}`;
+}
+
+const TIME_RE = /(?:(오전|오후|아침|저녁|밤|새벽)\s*)?(\d{1,2})(?:\s*[:시]\s*(?:(\d{2})\s*분?|(반))?)(\s*(?:am|pm))?/i;
+
+/**
+ * One line → an appointment on `day`: "14:00 치과", "오후 3시~5시 스터디 @도서관",
+ * "3시 반 조모임", "종일 MT", "11/3 18시 저녁약속" (a date in the line wins over
+ * `day`). A place goes after "@". Null when there is no title left.
+ */
+export function parseAppointment(text: string, day: string, today: string): Omit<Appointment, "id"> | null {
+  let t = ` ${text.trim()} `;
+  let date = day;
+  // A date of its own: "11/3", "11월 3일", "내일".
+  const q = parseQuickTask(t.trim(), today);
+  if (q.due) {
+    date = q.due;
+    t = ` ${q.title} `;
+  }
+  let place = "";
+  const at = t.match(/\s@\s*(\S.*)$/);
+  if (at) {
+    place = at[1].trim();
+    t = t.slice(0, at.index);
+  }
+  let start = "";
+  let end = "";
+  if (/\s종일\s/.test(t)) {
+    t = t.replace(/\s종일\s/, " ");
+  } else {
+    const m1 = t.match(new RegExp(`(?:^|\\s)${TIME_RE.source}(?=\\s|~|-|부터|까지|$)`, "i"));
+    if (m1 && (m1[0].includes(":") || m1[0].includes("시"))) {
+      const ampm = (m1[1] ?? m1[5]?.trim())?.toLowerCase();
+      const s1 = clock(Number(m1[2]), m1[4] ? 30 : Number(m1[3] ?? 0), ampm);
+      if (s1) {
+        start = s1;
+        t = t.slice(0, m1.index) + " " + t.slice((m1.index ?? 0) + m1[0].length);
+        // "~5시", "- 17:00", "부터 5시까지".
+        const m2 = t.match(new RegExp(`^\\s*(?:~|-|부터)\\s*${TIME_RE.source}\\s*(?:까지)?`, "i"))
+          ?? t.match(new RegExp(`(?:~|-|부터)\\s*${TIME_RE.source}\\s*(?:까지)?`, "i"));
+        if (m2) {
+          const am2 = (m2[1] ?? m2[5]?.trim())?.toLowerCase() ?? (Number(start.slice(0, 2)) >= 12 ? "오후" : undefined);
+          const e1 = clock(Number(m2[2]), m2[4] ? 30 : Number(m2[3] ?? 0), am2);
+          if (e1 && e1 > start) {
+            end = e1;
+            t = t.replace(m2[0], " ");
+          }
+        }
+      }
+    }
+  }
+  const title = t.replace(/\s+/g, " ").trim();
+  if (!title || !DATE.test(date)) return null;
+  return { title, date, start, end, place };
+}
+
+export interface DayMarks {
+  appointments: number;
+  exams: number;
+  tasks: number;
+  ddays: number;
+  classes: number;
+}
+
+/** What each day of a month holds, for the calendar's dots. `month` is "YYYY-MM". */
+export function monthMarks(board: Board, month: string, today: string): Map<string, DayMarks> {
+  const out = new Map<string, DayMarks>();
+  const get = (d: string) => {
+    let m = out.get(d);
+    if (!m) out.set(d, (m = { appointments: 0, exams: 0, tasks: 0, ddays: 0, classes: 0 }));
+    return m;
+  };
+  const inMonth = (d: string) => d.startsWith(month);
+  for (const a of board.appointments) if (inMonth(a.date)) get(a.date).appointments++;
+  for (const e of board.exams) if (inMonth(e.date)) get(e.date).exams++;
+  for (const t of board.tasks) if (!t.done && t.due && inMonth(t.due)) get(t.due).tasks++;
+  for (const c of board.classes) if (inMonth(c.date) && c.start) get(c.date).classes++;
+  for (const e of board.events) {
+    // A yearly one shows on its day this month, whatever year it started.
+    const d = e.yearly ? `${month}-${e.date.slice(8)}` : e.date;
+    if (inMonth(d) && (e.yearly ? e.date.slice(5, 7) === month.slice(5) : true)) get(d).ddays++;
+  }
+  void today;
+  return out;
+}
+
+/** The 6×7 days of the month view, Monday first; days outside `month` included to fill the weeks. */
+export function monthGrid(month: string): string[] {
+  const first = `${month}-01`;
+  const start = mondayOf(first);
+  const days: string[] = [];
+  for (let i = 0; i < 42; i++) days.push(addDays(start, i));
+  // Drop a last week that is entirely next month.
+  while (days.length > 35 && !days[days.length - 7].startsWith(month)) days.splice(-7);
+  return days;
+}
+
+export function addMonths(month: string, n: number): string {
+  const [y, m] = month.split("-").map(Number);
+  const d = new Date(y, m - 1 + n, 1);
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
 }

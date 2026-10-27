@@ -197,3 +197,49 @@ test("the weather place falls back to 고양시 and refuses nonsense", () => {
   assert.equal(normalizeBoard({ place: { name: "x", lat: 200, lon: 0 } }).place.name, "고양시 일산");
   assert.deepEqual(normalizeBoard({ place: { name: "경주", lat: 35.8, lon: 129.2 } }).place, { name: "경주", lat: 35.8, lon: 129.2 });
 });
+
+// ── 1.2: the calendar ─────────────────────────────────────────────────────────
+
+import { addMonths, monthGrid, monthMarks, parseAppointment } from "../src/study/model.ts";
+
+test("an appointment typed in one line", () => {
+  const day = "2026-10-27";
+  const p = (t) => parseAppointment(t, day, day);
+  assert.deepEqual(p("14:00 치과"), { title: "치과", date: day, start: "14:00", end: "", place: "" });
+  assert.deepEqual(p("3시 치과 @일산역"), { title: "치과", date: day, start: "15:00", end: "", place: "일산역" });
+  assert.deepEqual(p("오후 3시~5시 스터디 @도서관"), { title: "스터디", date: day, start: "15:00", end: "17:00", place: "도서관" });
+  assert.deepEqual(p("3시 반 조모임"), { title: "조모임", date: day, start: "15:30", end: "", place: "" });
+  assert.deepEqual(p("오전 9시 병원"), { title: "병원", date: day, start: "09:00", end: "", place: "" });
+  assert.deepEqual(p("종일 MT"), { title: "MT", date: day, start: "", end: "", place: "" });
+  assert.deepEqual(p("11/3 18시 저녁약속"), { title: "저녁약속", date: "2026-11-03", start: "18:00", end: "", place: "" });
+  assert.deepEqual(p("내일 10:30 상담"), { title: "상담", date: "2026-10-28", start: "10:30", end: "", place: "" });
+  assert.deepEqual(p("19:00-21:00 스터디"), { title: "스터디", date: day, start: "19:00", end: "21:00", place: "" });
+  assert.deepEqual(p("동아리 회의"), { title: "동아리 회의", date: day, start: "", end: "", place: "" });
+  assert.equal(p("14:00"), null);
+});
+
+test("the month grid starts on Monday and has whole weeks", () => {
+  const oct = monthGrid("2026-10");
+  assert.equal(oct[0], "2026-09-28");
+  assert.equal(oct.length % 7, 0);
+  assert.ok(oct.includes("2026-10-31"));
+  const nov = monthGrid("2026-11");
+  assert.equal(nov.length, 42, "November 2026 spans six weeks");
+  assert.equal(addMonths("2026-12", 1), "2027-01");
+  assert.equal(addMonths("2026-01", -1), "2025-12");
+});
+
+test("the calendar's dots: appointments, exams, open deadlines, D-days", () => {
+  const b = normalizeBoard({
+    appointments: [{ id: "a", title: "치과", date: "2026-11-03", start: "15:00" }],
+    exams: [{ id: "e", subject: "심계", date: "2026-11-03" }],
+    tasks: [{ id: "t", title: "레포트", due: "2026-11-05" }, { id: "d", title: "끝", due: "2026-11-05", done: true }],
+    events: [{ id: "y", title: "생일", date: "2001-11-14", yearly: true }, { id: "o", title: "방학", date: "2026-12-19" }],
+  });
+  const m = monthMarks(b, "2026-11", "2026-10-27");
+  assert.equal(m.get("2026-11-03").appointments, 1);
+  assert.equal(m.get("2026-11-03").exams, 1);
+  assert.equal(m.get("2026-11-05").tasks, 1);
+  assert.equal(m.get("2026-11-14").ddays, 1);
+  assert.equal(m.has("2026-12-19"), false);
+});

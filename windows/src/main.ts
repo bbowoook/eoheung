@@ -57,18 +57,18 @@ async function main() {
   // Rust shows the tray and its errors in the same language as the webview.
   void Bridge.setSystemLanguages(systemLanguages());
   island.applySettings();
-  // 어흥이 1.1: the weather, D-day and memo pills join an older install's list once.
+  // 어흥이 1.1–1.2: the calendar, weather, D-day and memo pills join an older install's list once.
   try {
-    if (!localStorage.getItem("eoheung-pills-1.1")) {
+    if (!localStorage.getItem("eoheung-pills-1.2")) {
       const list = [...State.settings.activeIntegrations];
-      for (const id of ["study_weather", "study_dday", "study_memo"]) {
+      for (const id of ["study_calendar", "study_weather", "study_dday", "study_memo"]) {
         if (!list.includes(id) && id !== State.settings.mainPill && list.length < MAX_DECLARED) list.push(id);
       }
       if (list.length !== State.settings.activeIntegrations.length) {
         State.settings.activeIntegrations = list;
         void Bridge.saveSettings(State.settings);
       }
-      localStorage.setItem("eoheung-pills-1.1", "1");
+      localStorage.setItem("eoheung-pills-1.2", "1");
     }
   } catch {
     /* no storage: nothing to migrate */

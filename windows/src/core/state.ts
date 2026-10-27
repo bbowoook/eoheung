@@ -174,7 +174,7 @@ export const DEFAULT_SETTINGS: Settings = {
   showClock: false,
   absenceInterval: 180,
   activeIntegrations: [
-    "study_exams", "study_classes", "study_tasks", "study_weather", "study_notices", "study_dday", "study_memo",
+    "study_calendar", "study_exams", "study_classes", "study_tasks", "study_weather", "study_notices", "study_dday", "study_memo",
   ],
   mainPill: DEFAULT_MAIN_PILL,
   screen: "primary",
