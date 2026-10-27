@@ -91,35 +91,36 @@ export const PILL_CATALOG: readonly PillDefinition[] = [
     subtitle: N_("Study"), source: "n8n", support: "yes", connect: none },
   { id: "study_memo", name: "메모", color: "#F7B32B", category: "study",
     subtitle: N_("Study"), source: "n8n", support: "yes", connect: none },
+  // 어흥이 1.3: the agents are back — their pill appears only while a session runs.
   // ── Where you code ─────────────────────────────────────────────────────────
   { id: "integration_claude", name: "Claude Code", color: "#F5F6F8", category: "workspace",
-    subtitle: N_("Integration"), source: "claudeCode", support: "no", connect: hooks },
+    subtitle: N_("Integration"), source: "claudeCode", support: "yes", connect: hooks },
   // Claude Code in Cursor's terminal: the same hooks as Claude Code.
   { id: "agent_cursor", name: "Cursor", color: "#C0C4CC", category: "workspace",
-    subtitle: N_("Integration"), source: "agent", support: "no", connect: hooks },
+    subtitle: N_("Integration"), source: "agent", support: "yes", connect: hooks },
   { id: "agent_antigravity", name: "Antigravity", color: "#E879F9", category: "workspace",
-    subtitle: N_("Integration"), source: "agent", support: "no", connect: hooks },
+    subtitle: N_("Integration"), source: "agent", support: "yes", connect: hooks },
   { id: "agent_codex", name: "Codex", color: "#2DD4BF", category: "workspace",
-    subtitle: N_("Integration"), source: "agent", support: "no", connect: hooks },
+    subtitle: N_("Integration"), source: "agent", support: "yes", connect: hooks },
   // ── Agents ─────────────────────────────────────────────────────────────────
   { id: "agent_gemini", name: "Gemini CLI", color: "#8AB4F8", category: "agent",
-    subtitle: N_("Agent"), source: "agent", support: "no", connect: hooks },
+    subtitle: N_("Agent"), source: "agent", support: "yes", connect: hooks },
   { id: "agent_copilot", name: "Copilot CLI", color: "#818CF8", category: "agent",
-    subtitle: N_("Agent"), source: "agent", support: "no", connect: hooks },
+    subtitle: N_("Agent"), source: "agent", support: "yes", connect: hooks },
   { id: "agent_muse", name: "Muse Code", color: "#38BDF8", category: "agent",
-    subtitle: N_("Agent"), source: "agent", support: "no", connect: hooks },
+    subtitle: N_("Agent"), source: "agent", support: "yes", connect: hooks },
   // A plugin that starts the relay, written from Settings → Agents (agents.rs).
   { id: "agent_opencode", name: "OpenCode", color: "#4ADE80", category: "agent",
-    subtitle: N_("Agent"), source: "agent", support: "no", connect: hooks },
+    subtitle: N_("Agent"), source: "agent", support: "yes", connect: hooks },
   { id: "agent_amp", name: "Amp", color: "#F59E0B", category: "agent",
-    subtitle: N_("Agent"), source: "agent", support: "no", connect: hooks },
+    subtitle: N_("Agent"), source: "agent", support: "yes", connect: hooks },
   { id: "agent_hermes", name: "Hermes", color: "#C084FC", category: "agent",
-    subtitle: N_("Agent"), source: "agent", support: "no", connect: hooks },
+    subtitle: N_("Agent"), source: "agent", support: "yes", connect: hooks },
   // Claude Code sessions run from the Claude desktop app: the relay tags them
   // from CLAUDE_CODE_ENTRYPOINT, so there is nothing to install. The app has no
   // Linux build.
   { id: "agent_claude-desktop", name: "Claude Desktop", color: "#D97757", category: "agent",
-    subtitle: N_("Agent"), source: "agent", support: "no", connect: none },
+    subtitle: N_("Agent"), source: "agent", support: "windows", connect: none },
   // ── AI for the chat ────────────────────────────────────────────────────────
   { id: "ai_anthropic", name: "Anthropic", color: ACCENT.anthropic, category: "ai",
     subtitle: N_("Chat"), source: "n8n", support: "yes", connect: key("anthropic-api-key") },

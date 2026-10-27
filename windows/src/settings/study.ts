@@ -264,7 +264,7 @@ export const renderTasks: FlowPageRenderer = (container, ctx) => {
 // ── 텔레그램 ──────────────────────────────────────────────────────────────────
 
 export const renderTelegram: FlowPageRenderer = async (container, ctx) => {
-  const root = page(container, ctx, "study-telegram", "텔레그램 · 공지", "단톡방·채널 공지를 모아 보고, 시험·과제 알림을 폰으로 받아.");
+  const root = page(container, ctx, "study-telegram", "텔레그램 · 공지", "폰과 어흥이를 잇는 통로: 시험·과제 알림을 받고, 폰에서 공지·과제·일정을 보내.");
   let hasToken = IS_TAURI ? (await Bridge.secretPresent(TELEGRAM_KEY)) ?? false : false;
   let status = "";
   let statusOk = true;
@@ -312,7 +312,7 @@ export const renderTelegram: FlowPageRenderer = async (container, ctx) => {
       h("ol", { class: "st-steps" },
         h("li", { text: "텔레그램에서 @BotFather 를 찾아 /newbot 을 보내고, 이름(예: 어흥이)과 아이디(예: eoheung_내이름_bot)를 정해." }),
         h("li", { text: "BotFather 가 주는 토큰(숫자:영문)을 아래에 붙여넣고 [저장하고 확인]." }),
-        h("li", { text: "단톡방 글을 다 받으려면 BotFather 에서 /setprivacy → 내 봇 → Disable 로 바꿔 줘. (바꾼 뒤 봇을 방에 다시 초대해야 해)" }),
+        h("li", { text: "아래 ② 에서 [내 폰 연결하기] 를 눌러 내 텔레그램과 짝지어." }),
       ),
       h("div", { class: "row" }, token, saveToken, forget),
       h("div", { class: "row" },
@@ -337,8 +337,8 @@ export const renderTelegram: FlowPageRenderer = async (container, ctx) => {
         toggle(!c.muted, (v) => save((x) => ({ ...x, telegram: { ...x.telegram, chats: { ...x.telegram.chats, [id]: { ...c, muted: !v } } } }))),
       ));
     }
-    const step2 = section("② 공지 모아보기",
-      h("div", { class: "hint", text: "봇이 들어간 방에 올라오는 글이 '공지' 알약에 쌓여. PC가 켜져 있고 어흥이가 실행 중일 때 30초마다 가져와. 꺼져 있던 동안의 글은 다시 켜면 한꺼번에 들어와(텔레그램이 최대 24시간 보관)." }),
+    const step2 = section("④ (선택) 단톡방·채널에 봇 넣기",
+      h("div", { class: "hint", text: "봇을 단톡방에 초대하거나 공지 채널 관리자로 넣으면 거기 글도 자동으로 '공지'에 쌓여. 단톡방 글을 다 받으려면 BotFather 에서 /setprivacy → 내 봇 → Disable 로 바꾼 뒤 초대해. 초대가 어려우면 안 해도 돼: 공지는 섬에서 붙여넣거나 ③ 처럼 폰에서 봇에게 전달하면 돼." }),
       chatList,
       h("div", { class: "row" },
         h("span", { class: "hint", text: `공지 ${b.notices.length}개 보관 중` }),
@@ -389,7 +389,7 @@ export const renderTelegram: FlowPageRenderer = async (container, ctx) => {
     evening.addEventListener("change", () => save((x) => ({ ...x, telegram: { ...x.telegram, remindEvening: evening.value || "21:00" } })));
     const morning = input("time", tg.remindMorning, "", 110);
     morning.addEventListener("change", () => save((x) => ({ ...x, telegram: { ...x.telegram, remindMorning: morning.value || "07:30" } })));
-    const step3 = section("③ 폰으로 알림",
+    const step3 = section("② 내 폰 연결 · 알림",
       pairRow,
       h("div", { class: "row" },
         h("label", { text: "시험 알림" }),
@@ -404,7 +404,20 @@ export const renderTelegram: FlowPageRenderer = async (container, ctx) => {
       h("div", { class: "row" }, h("label", { text: "전날 밤 알림" }), evening, h("label", { text: "당일 아침 알림" }), morning),
       h("div", { class: "hint", text: "폰이 연결되지 않아도 같은 알림이 화면 위 어흥이에게 떠. 알림은 PC가 켜져 있을 때만 보낼 수 있어." }),
     );
-    return [step1, step2, step3];
+    const usage = section("③ 폰에서 어흥이에게 보내기",
+      h("div", { class: "hint", text: "내 봇과의 1:1 대화창이 PC 어흥이의 받은편지함이 돼. 보내면 30초 안에 섬에 들어오고, 봇이 어디에 넣었는지 답장해 줘." }),
+      h("div", { class: "st-table" },
+        ...[
+          ["카톡·단톡 공지를 복사해서 그냥 보내기", "→ 공지 (날짜 있는 줄은 섬에서 달력·과제로 한 번에)"],
+          ["다른 텔레그램 대화의 메시지를 봇에게 '전달'", "→ 공지 (어디서 왔는지 같이 기록)"],
+          ["과제 침구 레포트 11/3", "→ 과제, 마감 11/3"],
+          ["일정 11/5 3시 치과 @일산역", "→ 달력"],
+          ["메모 가운 챙기기", "→ 메모"],
+        ].map(([a, b]) => h("div", { class: "st-line" }, h("code", { text: a }), h("span", { class: "hint", text: b }))),
+      ),
+      h("div", { class: "hint", text: paired ? "PC가 꺼져 있을 때 보낸 것도 24시간 안에 켜면 들어와." : "먼저 ② 에서 내 폰을 연결해 줘. 연결 전에는 아무 메시지도 받지 않아." }),
+    );
+    return [step1, step3, usage, step2];
   });
 };
 

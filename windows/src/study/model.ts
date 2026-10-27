@@ -47,6 +47,8 @@ export interface Notice {
   /** Unix ms. */
   date: number;
   read: boolean;
+  /** Keys of the suggestions (noticeSuggestions) already put on the calendar or the task list. */
+  done: string[];
 }
 
 export interface TelegramChat {
@@ -203,6 +205,7 @@ export function normalizeBoard(raw: unknown): Board {
       id: str(n.id) || newId(), source: n.source === "manual" ? "manual" as const : "telegram" as const,
       chat: str(n.chat), author: str(n.author), text: str(n.text),
       date: typeof n.date === "number" ? n.date : 0, read: n.read === true,
+      done: Array.isArray(n.done) ? n.done.filter((k): k is string => typeof k === "string") : [],
     })).filter((n) => n.text),
     telegram: {
       ...DEFAULT_TELEGRAM,
@@ -491,12 +494,21 @@ interface TgMessage {
   from?: { first_name?: string; last_name?: string; username?: string; is_bot?: boolean };
   author_signature?: string;
   sender_chat?: { title?: string };
+  /** Set on a message forwarded from elsewhere (Bot API 7). */
+  forward_origin?: {
+    type?: string;
+    sender_user?: { first_name?: string; last_name?: string; username?: string };
+    sender_user_name?: string;
+    chat?: { title?: string };
+  };
   text?: string;
   caption?: string;
 }
 
 export interface UpdatesResult {
   board: Board;
+  /** What the user sent their own bot and where it went, for the island to say so. */
+  captured: { kind: "notice" | "task" | "appointment" | "memo"; line: string }[];
   /** Notices that just came in, newest last. */
   added: Notice[];
   /** Messages to send back (pairing confirmations). */
@@ -517,9 +529,13 @@ export function makePairCode(): string {
  * Folds a batch of updates into the board: group and channel posts become notices,
  * the pairing message sets the user's own chat, and the offset moves past the batch.
  */
-export function applyUpdates(board: Board, updates: TgUpdate[]): UpdatesResult {
+export function applyUpdates(board: Board, updates: TgUpdate[], today = ymd(new Date())): UpdatesResult {
   const tg = { ...board.telegram, chats: { ...board.telegram.chats } };
   const notices = [...board.notices];
+  const tasks = [...board.tasks];
+  const appointments = [...board.appointments];
+  const memos = [...board.memos];
+  const captured: UpdatesResult["captured"] = [];
   const known = new Set(notices.map((n) => n.id));
   const added: Notice[] = [];
   const replies: { chatId: number; text: string }[] = [];
@@ -550,9 +566,57 @@ export function applyUpdates(board: Board, updates: TgUpdate[]): UpdatesResult {
         paired = true;
         replies.push({
           chatId: m.chat.id,
-          text: "🐯 연결됐어! 이제 시험 전날이랑 과제 마감 전에 어흥이가 여기로 알려줄게.",
+          text: "🐯 연결됐어! 시험 전날이랑 과제 마감 전에 여기로 알려줄게.\n\n" +
+            "여기로 보내면 PC의 어흥이에게 바로 들어가:\n" +
+            "• 그냥 보내기 / 공지 전달 → 공지\n• 과제 침구 레포트 11/3 → 과제\n" +
+            "• 일정 11/5 3시 치과 → 달력\n• 메모 가운 챙기기 → 메모",
         });
+        continue;
       }
+      // The user's own chat with their bot: whatever they send is captured.
+      if (tg.ownerChatId == null || m.chat.id !== tg.ownerChatId || !text || /^\/start\b/.test(text)) continue;
+      const id = `tg-${m.chat.id}-${m.message_id}`;
+      if (known.has(id)) continue;
+      known.add(id);
+      const cmd = text.match(/^\/?(과제|일정|약속|메모)\s+([\s\S]+)$/);
+      const created = (m.date || 0) * 1000 || Date.now();
+      if (cmd && !m.forward_origin) {
+        const body = cmd[2].trim();
+        if (cmd[1] === "과제") {
+          const q = parseQuickTask(body, today);
+          tasks.push({ id, title: q.title, subject: "", due: q.due, done: false, doneAt: null, created });
+          captured.push({ kind: "task", line: q.title });
+          replies.push({ chatId: m.chat.id, text: `🐯 과제에 넣었어: ${q.title}${q.due ? ` (마감 ${shortDate(q.due)})` : ""}` });
+          continue;
+        }
+        if (cmd[1] === "메모") {
+          memos.push({ id, text: body, pinned: false, created });
+          captured.push({ kind: "memo", line: body });
+          replies.push({ chatId: m.chat.id, text: "🐯 메모에 적어 뒀어" });
+          continue;
+        }
+        const a = parseAppointment(body, today, today);
+        if (a) {
+          appointments.push({ id, ...a });
+          captured.push({ kind: "appointment", line: a.title });
+          replies.push({ chatId: m.chat.id, text: `🐯 달력에 넣었어: ${shortDate(a.date)}${a.start ? ` ${a.start}` : ""} ${a.title}` });
+          continue;
+        }
+      }
+      const fo = m.forward_origin;
+      const from = fo ? fo.chat?.title || personName(fo.sender_user) || fo.sender_user_name || "" : "";
+      const notice: Notice = {
+        id, source: "telegram", chat: from ? `전달 · ${from}` : "내 폰", author: "", text: text.slice(0, 4000),
+        date: created, read: false, done: [],
+      };
+      notices.push(notice);
+      added.push(notice);
+      captured.push({ kind: "notice", line: text.split("\n")[0].slice(0, 60) });
+      const n = noticeSuggestions(notice.text, today).length;
+      replies.push({
+        chatId: m.chat.id,
+        text: `🐯 공지에 저장했어${n ? `. 날짜가 있는 줄 ${n}개는 섬의 공지 카드에서 바로 달력·과제로 넣을 수 있어` : ""}`,
+      });
       continue;
     }
     const key = String(m.chat.id);
@@ -570,7 +634,7 @@ export function applyUpdates(board: Board, updates: TgUpdate[]): UpdatesResult {
     }
     const notice: Notice = {
       id, source: "telegram", chat: tg.chats[key].title, author, text: text.slice(0, 2000),
-      date: (m.date || 0) * 1000, read: false,
+      date: (m.date || 0) * 1000, read: false, done: [],
     };
     known.add(id);
     notices.push(notice);
@@ -579,8 +643,9 @@ export function applyUpdates(board: Board, updates: TgUpdate[]): UpdatesResult {
 
   notices.sort((a, b) => a.date - b.date);
   return {
-    board: { ...board, notices: notices.slice(-MAX_NOTICES), telegram: tg },
+    board: { ...board, notices: notices.slice(-MAX_NOTICES), tasks, appointments, memos, telegram: tg },
     added,
+    captured,
     replies,
     paired,
   };
@@ -777,4 +842,72 @@ export function addMonths(month: string, n: number): string {
   const [y, m] = month.split("-").map(Number);
   const d = new Date(y, m - 1 + n, 1);
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
+}
+
+// ── A notice, read for dates ─────────────────────────────────────────────────
+
+export interface Suggestion {
+  /** Stable for the notice: the line's index and kind. */
+  key: string;
+  kind: "task" | "appointment" | "exam";
+  title: string;
+  date: string;
+  start: string;
+  /** The line it came from, for the chip's tooltip. */
+  line: string;
+}
+
+/** A notice pasted in by hand: today's date, unread so it shows as new. */
+export function manualNotice(text: string, chat: string, now = Date.now()): Notice {
+  return { id: newId(), source: "manual", chat: chat.trim() || "직접 붙여넣음", author: "", text: text.trim().slice(0, 4000), date: now, read: false, done: [] };
+}
+
+/**
+ * The lines of a notice that carry a date, as things to put on the calendar or the
+ * task list: "11/3(월) 침구 레포트 제출" → a task due 11/3; "11월 5일 3교시 휴강" → an
+ * appointment; "중간고사 10/20 9시" → an exam. Lines without a date are skipped.
+ */
+export function noticeSuggestions(text: string, today: string): Suggestion[] {
+  const out: Suggestion[] = [];
+  const lines = text.split(/\r?\n/);
+  lines.forEach((raw, i) => {
+    // "11/3(월)" and "11.3" read as "11/3"; bullets and numbering go.
+    const line = raw
+      // Bullets and "1." / "2)" numbering first, so "1. 11/3" keeps its date.
+      .replace(/^(?:[\s\-•·*▶▷►☞※✔✅◆◇■□○●]+|\d{1,2}[.)]\s+)+/, "")
+      .replace(/(\d{1,2})\s*\/\s*(\d{1,2})\s*(?:\([월화수목금토일]\))?/g, "$1/$2 ")
+      // "11.3" only when it stands alone or before "(월)": "3.5학점" is not a date.
+      .replace(/(^|\s)(\d{1,2})\.(\d{1,2})(?:\s*\([월화수목금토일]\))?(?=\s|$)/g, "$1$2/$3 ")
+      .replace(/\s+/g, " ")
+      .trim();
+    const DATE_IN = /\d{1,2}\/\d{1,2}|\d{1,2}월\s*\d{1,2}일|내일|모레/;
+    if (!DATE_IN.test(line)) return;
+    // "11/5 휴강, 11/12 보강": one suggestion per date when a line holds several.
+    const parts = line.split(/\s*[,，、;]\s*/);
+    const pieces = parts.length > 1 && parts.filter((x) => DATE_IN.test(x)).length > 1 ? parts : [line];
+    pieces.forEach((piece, j) => {
+      if (!DATE_IN.test(piece)) return;
+      const a = parseAppointment(piece, today, today);
+      if (!a) return;
+      const title = a.title.replace(/^[:\-~,·]+|[:\-~,·]+$/g, "").trim();
+      if (!title) return;
+      const kind: Suggestion["kind"] = /제출|마감|과제|레포트|리포트|보고서|까지/.test(piece)
+        ? "task"
+        : /시험|퀴즈|평가/.test(piece) && !/휴강|보강/.test(piece) ? "exam" : "appointment";
+      out.push({ key: `${i}${pieces.length > 1 ? `.${j}` : ""}:${kind}`, kind, title, date: a.date, start: a.start, line: raw.trim() });
+    });
+  });
+  return out.slice(0, 6);
+}
+
+/** Puts one suggestion where it belongs and remembers it was taken. */
+export function takeSuggestion(board: Board, noticeId: string, s: Suggestion): Board {
+  const notices = board.notices.map((n) => (n.id === noticeId ? { ...n, done: [...new Set([...n.done, s.key])] } : n));
+  if (s.kind === "task") {
+    return { ...board, notices, tasks: [...board.tasks, { id: newId(), title: s.title, subject: "", due: s.date, done: false, doneAt: null, created: Date.now() }] };
+  }
+  if (s.kind === "exam") {
+    return { ...board, notices, exams: [...board.exams, { id: newId(), subject: s.title, date: s.date, start: s.start, end: "", place: "", note: "공지에서" }] };
+  }
+  return { ...board, notices, appointments: [...board.appointments, { id: newId(), title: s.title, date: s.date, start: s.start, end: "", place: "" }] };
 }

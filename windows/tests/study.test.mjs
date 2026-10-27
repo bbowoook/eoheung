@@ -243,3 +243,63 @@ test("the calendar's dots: appointments, exams, open deadlines, D-days", () => {
   assert.equal(m.get("2026-11-14").ddays, 1);
   assert.equal(m.has("2026-12-19"), false);
 });
+
+// ── 1.3: notices pasted by hand, the phone as an inbox ───────────────────────
+
+import { manualNotice, noticeSuggestions, takeSuggestion } from "../src/study/model.ts";
+
+test("a pasted notice: the dated lines become suggestions", () => {
+  const text = [
+    "[본3 공지]",
+    "1. 11/3(화) 침구 조별 레포트 제출 23:59까지",
+    "2. 11.5 3교시 휴강, 11월 12일 오후 2시 보강",
+    "• 중간고사 성적 확인 10/30",
+    "• 심계 퀴즈 11/10 9시",
+    "3.5학점 과목은 출석 필수",
+  ].join("\n");
+  const s = noticeSuggestions(text, "2026-10-27");
+  assert.deepEqual(s.map((x) => [x.kind, x.date]), [
+    ["task", "2026-11-03"],
+    ["appointment", "2026-11-05"],
+    ["appointment", "2026-11-12"],
+    ["appointment", "2026-10-30"],
+    ["exam", "2026-11-10"],
+  ]);
+  assert.match(s[0].title, /침구 조별 레포트 제출/);
+  assert.equal(s[2].start, "14:00", "보강 at 오후 2시");
+  assert.equal(s[4].start, "09:00");
+});
+
+test("taking a suggestion files it and remembers it", () => {
+  let b = board();
+  const n = manualNotice("11/3 침구 레포트 제출", "과대 단톡");
+  b = normalizeBoard({ ...b, notices: [n] });
+  const [s] = noticeSuggestions(n.text, "2026-10-27");
+  b = takeSuggestion(b, n.id, s);
+  assert.ok(b.tasks.some((t) => t.title === "침구 레포트 제출" && t.due === "2026-11-03"));
+  assert.deepEqual(b.notices[0].done, [s.key]);
+  assert.equal(b.notices[0].source, "manual");
+});
+
+test("messages to the user's own bot go to notices, tasks, the calendar or memos", () => {
+  const b = normalizeBoard({ ...board(), telegram: { ownerChatId: 77 } });
+  let id = 100;
+  const dm = (text, extra = {}) => ({ update_id: id++, message: { message_id: id, date: 1_793_000_000, chat: { id: 77, type: "private" }, text, ...extra } });
+  const r = applyUpdates(b, [
+    dm("과제 침구 레포트 11/3"),
+    dm("일정 11/5 3시 치과 @일산역"),
+    dm("메모 가운 챙기기"),
+    dm("내일 1교시 휴강입니다", { forward_origin: { type: "user", sender_user: { first_name: "과대" } } }),
+    dm("과제 이건 전달된 것", { forward_origin: { type: "user", sender_user_name: "누군가" } }),
+  ], "2026-10-27");
+  assert.ok(r.board.tasks.some((t) => t.title === "침구 레포트" && t.due === "2026-11-03"));
+  assert.ok(r.board.appointments.some((a) => a.title === "치과" && a.date === "2026-11-05" && a.start === "15:00" && a.place === "일산역"));
+  assert.ok(r.board.memos.some((m) => m.text === "가운 챙기기"));
+  assert.equal(r.added.length, 2, "a forwarded message is a notice even if it starts with 과제");
+  assert.equal(r.added[0].chat, "전달 · 과대");
+  assert.equal(r.replies.length, 5);
+  // Someone else writing to the bot is ignored.
+  const other = applyUpdates(b, [{ update_id: 1, message: { message_id: 1, date: 1, chat: { id: 5, type: "private" }, text: "과제 해킹" } }]);
+  assert.equal(other.board.tasks.length, b.tasks.length);
+  assert.equal(other.replies.length, 0);
+});

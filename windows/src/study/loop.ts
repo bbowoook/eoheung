@@ -60,6 +60,12 @@ async function pollTelegram(island: Island) {
     const r = result as ReturnType<typeof applyUpdates> | null;
     if (!r) return;
     for (const reply of r.replies) void Bridge.telegramSend(reply.chatId, reply.text).catch(() => {});
+    // What the user sent from their phone to their own bot.
+    const words = { task: "과제", appointment: "달력", memo: "메모", notice: "공지" } as const;
+    const pills = { task: "study_tasks", appointment: "study_calendar", memo: "study_memo", notice: "study_notices" } as const;
+    for (const c of r.captured.filter((x) => x.kind !== "notice")) {
+      studyAlert(island, pills[c.kind], `폰에서 ${words[c.kind]}에 추가`, c.line);
+    }
     if (r.added.length > 0) {
       const last = r.added[r.added.length - 1];
       const head = r.added.length > 1 ? `새 공지 ${r.added.length}개 · ${last.chat}` : `새 공지 · ${last.chat}`;

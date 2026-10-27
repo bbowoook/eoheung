@@ -46,6 +46,7 @@ export const STUDY_PAGES: PageDef[] = [
 export const NOTCH_PAGES: PageDef[] = [
   { id: "general", icon: "gear", title: () => t("General"), subtitle: () => t("Mochi, his sounds and how the island behaves.") },
   { id: "pills", icon: "grid", title: () => t("Active pills"), subtitle: () => t("The pills shown in the island, their order and their colours.") },
+  { id: "agents", icon: "terminal", title: () => t("Agents"), subtitle: () => "Claude Code·Codex가 일하는 걸 섬에서 보고, 권한을 바로 허용해." },
   { id: "chat", icon: "chat", title: () => t("Chat"), subtitle: () => t("The AI of the island's chat, with your own keys.") },
   { id: "shortcuts", icon: "keyboard", title: () => t("Shortcuts"), subtitle: () => t("The keys that open the island and its actions.") },
 ];

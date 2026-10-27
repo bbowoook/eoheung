@@ -9,7 +9,7 @@ import { Bridge } from "../core/bridge";
 import { Study } from "../study/store";
 import {
   addDays, addMonths, appointmentsOn, autoClassDay, classPhases, classesOn, minutes, monthGrid, monthMarks,
-  parseAppointment, daysBetween, ddayLabel, headline, longDate, mondayOf, newId, openTasks, parseDday,
+  manualNotice, noticeSuggestions, parseAppointment, takeSuggestion, daysBetween, ddayLabel, headline, longDate, mondayOf, newId, openTasks, parseDday,
   parseQuickTask, shortDate, sortedMemos, sortedNotices, tasksDueWithin, unreadNotices, upcomingEvents, upcomingExams,
   ymd, WEEKDAYS, type Appointment, type ClassItem, type Task,
 } from "../study/model";
@@ -179,6 +179,35 @@ export function buildStudyCard(host: StudyCardHost) {
     calMonth = parsed.date.slice(0, 7);
     void Study.update((b) => ({ ...b, appointments: [...b.appointments, { id: newId(), ...parsed }] }));
   });
+  /** The 공지 card's paste box: open, and its text kept across rebuilds. */
+  let composing = false;
+  const pasteBox = h("textarea", { class: "st-paste", rows: "5", placeholder: "여기에 공지를 붙여넣어 (Ctrl+V)", maxlength: "4000" }) as HTMLTextAreaElement;
+  pasteBox.addEventListener("focus", () => host.keyboard(true));
+  pasteBox.addEventListener("blur", () => host.keyboard(false));
+  pasteBox.addEventListener("input", () => host.holdOpen(pasteBox.value.trim().length > 0));
+  pasteBox.addEventListener("keydown", (e) => {
+    e.stopPropagation();
+    if (e.key === "Escape") {
+      composing = false;
+      pasteBox.blur();
+      redraw();
+    } else if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && !e.isComposing) {
+      e.preventDefault();
+      savePaste();
+    }
+  });
+  function savePaste() {
+    const text = pasteBox.value.trim();
+    if (!text) return;
+    const n = manualNotice(text, "");
+    pasteBox.value = "";
+    composing = false;
+    host.holdOpen(false);
+    pasteBox.blur();
+    // Opened at once, so the dated lines can be filed straight away.
+    openNotice = n.id;
+    void Study.update((b) => ({ ...b, notices: [...b.notices, { ...n, read: true }] }));
+  }
   const fields = [taskField, memoField, ddayField, apptField];
 
   Study.subscribe(() => {
@@ -540,29 +569,47 @@ export function buildStudyCard(host: StudyCardHost) {
 
   function notices(): HTMLElement[] {
     const b = Study.board;
+    const today = ymd(new Date());
     const all = sortedNotices(b);
     const unread = unreadNotices(b).length;
-    const markAll = unread
-      ? h("button", {
+    const actions = h("span", { class: "st-nav" });
+    if (unread && !composing) {
+      actions.append(h("button", {
         class: "link-btn st-mark", text: "모두 읽음",
         onclick: () => void Study.update((x) => ({ ...x, notices: x.notices.map((n) => ({ ...n, read: true })) })),
-      })
-      : undefined;
-    const out: HTMLElement[] = [head("#A78BFA", "공지", unread ? `새 공지 ${unread}개` : "", markAll)];
-    if (all.length === 0) {
-      const linked = b.telegram.enabled;
-      out.push(empty(
-        linked ? "아직 들어온 공지가 없어. 봇을 단톡방에 초대했는지 확인해 줘." : "텔레그램을 연결하면 단톡방 공지가 여기 모여.",
-        { label: linked ? "텔레그램 설정" : "연결하기", run: () => host.openStudySettings("study-telegram") },
-      ));
+      }));
+    }
+    actions.append(h("button", {
+      class: `st-day st-weekbtn${composing ? " on" : ""}`, text: composing ? "취소" : "+ 붙여넣기",
+      onclick: () => {
+        composing = !composing;
+        if (composing) window.setTimeout(() => pasteBox.focus(), 60);
+        else pasteBox.blur();
+        redraw();
+      },
+    }));
+    if (openNotice && !composing) {
+      actions.prepend(h("button", { class: "st-day", text: "‹ 목록", onclick: () => { openNotice = null; redraw(); } }));
+    }
+    const out: HTMLElement[] = [head("#A78BFA", "공지", unread ? `새 공지 ${unread}개` : all.length ? `${all.length}개` : "", actions)];
+    if (composing) {
+      out.push(pasteBox, h("div", { class: "st-row st-pastebar" },
+        h("span", { class: "st-sub", text: "단톡방 공지를 복사해서 붙여넣어 · Ctrl+Enter" }),
+        h("button", { class: "st-day st-weekbtn on", text: "저장", onclick: () => savePaste() })));
       return out;
     }
-    const rows = h("div", { class: "st-list" });
-    for (const n of all.slice(0, openNotice ? 8 : 5)) {
+    if (all.length === 0) {
+      out.push(empty("단톡방 공지를 복사해서 [+ 붙여넣기]에 넣으면, 날짜가 있는 줄은 달력·과제로 바로 넣을 수 있어."));
+      return out;
+    }
+    const rows = h("div", { class: "st-list st-nlist" });
+    // Reading one: the others step aside so it has the room.
+    for (const n of openNotice ? all.filter((x) => x.id === openNotice) : all.slice(0, 5)) {
       const isOpen = openNotice === n.id;
-      rows.append(h("div", {
+      const item = h("div", {
         class: `st-notice${n.read ? "" : " unread"}${isOpen ? " open" : ""}`,
-        onclick: () => {
+        onclick: (e: Event) => {
+          if ((e.target as HTMLElement).closest(".st-sugg, .st-x")) return;
           openNotice = isOpen ? null : n.id;
           key = "";
           if (!n.read) {
@@ -576,12 +623,41 @@ export function buildStudyCard(host: StudyCardHost) {
         n.read ? null : h("i", { class: "st-dot" }),
         h("span", { text: [n.chat, n.author].filter(Boolean).join(" · ") }),
         h("span", { class: "st-ago", text: timeAgo(n.date) }),
+        isOpen ? xButton("공지 지우기", () => {
+          openNotice = null;
+          void Study.update((x) => ({ ...x, notices: x.notices.filter((y) => y.id !== n.id) }));
+        }) : null,
       ),
-      h("div", { class: "st-ntext", text: n.text })));
+      h("div", { class: "st-ntext", text: n.text }));
+      const sugg = noticeSuggestions(n.text, today);
+      if (isOpen && sugg.length) {
+        const bar = h("div", { class: "st-suggs" });
+        for (const sg of sugg) {
+          const done = n.done.includes(sg.key);
+          const where = sg.kind === "task" ? "과제" : sg.kind === "exam" ? "시험" : "달력";
+          bar.append(h("button", {
+            class: `st-sugg k-${sg.kind}${done ? " done" : ""}`,
+            title: sg.line,
+            disabled: done,
+            text: `${done ? "✓" : "+"} ${shortDate(sg.date).split(" ")[0]} ${sg.title.length > 26 ? `${sg.title.slice(0, 26)}…` : sg.title} → ${where}`,
+            onclick: () => {
+              if (done) return;
+              host.cheer();
+              void Study.update((x) => takeSuggestion(x, n.id, sg));
+            },
+          }));
+        }
+        item.append(bar);
+      } else if (!isOpen && sugg.length && sugg.some((sg) => !n.done.includes(sg.key))) {
+        const left = sugg.filter((sg) => !n.done.includes(sg.key)).length;
+        item.querySelector(".st-nmeta")?.append(h("span", { class: "st-hasdate", title: "날짜가 있는 줄: 열어서 달력·과제로", text: `📅 ${left}` }));
+      }
+      rows.append(item);
     }
     out.push(rows);
     return out;
   }
+
 
   // ── D-day ──
 
@@ -635,7 +711,8 @@ export function buildStudyCard(host: StudyCardHost) {
     el,
     /** The week view takes the whole overview. */
     get wide(): boolean {
-      return week != null || State.focusTask?.id === "study_calendar";
+      const id = State.focusTask?.id;
+      return week != null || id === "study_calendar" || (id === "study_notices" && (composing || openNotice != null));
     },
     sync(id: StudyId) {
       if (id !== "study_classes") week = null;
@@ -643,7 +720,7 @@ export function buildStudyCard(host: StudyCardHost) {
       const next = `${id}~${minute}~${classDay}~${week}~${openNotice}~${calMonth}~${calDay}~${Weather.fetchedAt}~${Weather.loading}~${JSON.stringify(Study.board)}`;
       if (next === key) return;
       key = next;
-      const focused = fields.find((f) => document.activeElement === f) ?? null;
+      const focused = [...fields, pasteBox].find((f) => document.activeElement === f) ?? null;
       clear(el);
       const parts = id === "study_today" ? today()
         : id === "study_calendar" ? calendar()
@@ -664,6 +741,8 @@ export function buildStudyCard(host: StudyCardHost) {
       openNotice = null;
       calMonth = null;
       calDay = null;
+      composing = false;
+      if (document.activeElement === pasteBox) pasteBox.blur();
       for (const f of fields) if (document.activeElement === f) f.blur();
     },
   };
