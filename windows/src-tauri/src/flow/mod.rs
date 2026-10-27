@@ -115,9 +115,17 @@ fn is_terminal(id: &str) -> bool {
 
 // ── Setup, on and off ─────────────────────────────────────────────────────────
 
+/// Coucou's Flow dictation (the bar at the bottom of the screen, hold right Ctrl): off in 어흥이.
+const DICTATION: bool = false;
+
 pub fn setup(app: &AppHandle) {
     let flow = Arc::new(Flow { store: Mutex::new(Store::load()), running: Mutex::new(None) });
     app.manage(flow.clone());
+    // 어흥이: no dictation. Its speech model has no Korean, so the bar at the bottom
+    // of the screen is never made and the key is never watched.
+    if !DICTATION {
+        return;
+    }
     pill::setup(app);
     let prefs = flow.store.lock().unwrap().prefs.clone();
     pill::update(app, |s| {

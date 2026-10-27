@@ -48,7 +48,11 @@
 
 ## Claude 채팅과 에이전트
 
-- **채팅**: 섬 위쪽 말풍선 탭. 설정 → 채팅에 Anthropic API 키를 넣으면 써요(쓴 만큼 결제). 파일을 섬에 끌어다 놓고 그 파일에 대해 물을 수 있어요.
+- **채팅**: 섬 위쪽 말풍선 탭. 파일을 섬에 끌어다 놓고 그 파일에 대해 물을 수 있어요. API 키가 필요해요(Claude 구독과 별개로, 미리 충전한 만큼 차감).
+  1. https://platform.claude.com 에 가입·로그인
+  2. https://platform.claude.com/settings/billing → **Buy credits**로 충전 (Max 구독이면 claude.ai 설정 → Billing → **Link organization**으로 매달 무료 크레딧)
+  3. https://platform.claude.com/settings/keys → **Create Key** → 키 복사 (한 번만 보여요)
+  4. 어흥이 설정 → 채팅 → API 키에 붙여넣고 **키 저장**. 모델은 Sonnet 5.5가 기본
 - **에이전트**: PC에서 Claude Code나 Codex를 쓰면, 일하는 단계가 섬에 실시간으로 뜨고 권한 요청을 섬에서 바로 허용·거부해요. 설정 → 에이전트 → **훅 설치**. 세션이 도는 동안만 알약이 생겨요.
 
 ## 다시 빌드하기

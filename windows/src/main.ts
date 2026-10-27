@@ -73,6 +73,11 @@ async function main() {
   } catch {
     /* no storage: nothing to migrate */
   }
+  // 어흥이 1.4: the chat's model list moved to the 5.5 models; an older default follows.
+  if (["claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5"].includes(State.settings.model)) {
+    State.settings.model = "claude-sonnet-5-5";
+    void Bridge.saveSettings(State.settings);
+  }
   State.loadIntegrationTasks();
   // 어흥이: the study board, Telegram and the reminders.
   startStudyLoops(island);
@@ -169,7 +174,12 @@ async function main() {
     State.settings = { ...State.settings, ...s };
     applyLanguage();
     island.applySettings();
-    State.loadIntegrationTasks();
+    // 어흥이 1.4: the chat's model list moved to the 5.5 models; an older default follows.
+  if (["claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5"].includes(State.settings.model)) {
+    State.settings.model = "claude-sonnet-5-5";
+    void Bridge.saveSettings(State.settings);
+  }
+  State.loadIntegrationTasks();
     // A new main tool comes to the front, as on macOS.
     if (State.mainPillId !== previousMain) State.setFocus(State.mainPillId);
     void refreshConfigured();

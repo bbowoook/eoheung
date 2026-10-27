@@ -180,7 +180,7 @@ export const DEFAULT_SETTINGS: Settings = {
   screen: "primary",
   autostart: true,
   hooksInstalled: false,
-  model: "claude-opus-5",
+  model: "claude-sonnet-5-5",
   showPlanInNotch: false,
   planRelayInstalled: false,
   showCodexPlanInNotch: false,
